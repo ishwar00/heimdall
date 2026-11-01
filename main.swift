@@ -8,6 +8,7 @@ let threadsScript = NSString(string: "~/.local/bin/threads").expandingTildeInPat
 struct Row: Codable, Identifiable {
     let key: String, ts: Double, src: String, state: String, title: String, detail: String?
     let action: String, arg: String, cwd: String, age: String, section: String
+    let pr: String?  // the thread's open PR, e.g. "#2236 in review"
     var id: String { key }
 }
 
@@ -285,6 +286,31 @@ struct IslandView: View {
     }
 }
 
+// GitHub's pull-request icon (Octicons git-pull-request / git-pull-request-draft), drawn on a 16-unit grid
+struct PRIcon: Shape {
+    var draft = false
+    func path(in rect: CGRect) -> Path {
+        let k = rect.width / 16
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * k, y: rect.minY + y * k) }
+        var path = Path()
+        for (x, y) in [(3.5, 3.0), (3.5, 13.0), (12.5, 13.0)] {
+            path.addEllipse(in: CGRect(x: rect.minX + (x - 1.75) * k, y: rect.minY + (y - 1.75) * k, width: 3.5 * k, height: 3.5 * k))
+        }
+        path.move(to: p(3.5, 4.75)); path.addLine(to: p(3.5, 11.25))
+        if draft {  // a broken line and no arrow: not ready to merge
+            for y in [3.5, 7.5] {  // round caps turn these into dots
+                path.move(to: p(12.5, y)); path.addLine(to: p(12.5, y + 0.01))
+            }
+        } else {
+            path.move(to: p(12.5, 11.25)); path.addLine(to: p(12.5, 6.0))
+            path.addQuadCurve(to: p(10.5, 4.0), control: p(12.5, 4.0))
+            path.addLine(to: p(7.5, 4.0))
+            path.move(to: p(9.25, 2.25)); path.addLine(to: p(7.5, 4.0)); path.addLine(to: p(9.25, 5.75))
+        }
+        return path
+    }
+}
+
 struct RowView: View {
     let row: Row
     let design: Design
@@ -336,6 +362,17 @@ struct RowView: View {
                     if let stateLabel, let tint {
                         Text(stateLabel).font(design.small.weight(.medium)).foregroundStyle(tint)
                     }
+                    if let pr = row.pr {
+                        let draft = pr.contains("draft")
+                        HStack(spacing: 4) {
+                            PRIcon(draft: draft)
+                                .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                                .foregroundStyle(draft ? Color(hex: 0x8B949E) : Color(hex: 0x3FB950))  // GitHub's open / draft
+                                .frame(width: 11, height: 11)
+                            Text(pr).font(design.small.weight(.medium)).lineLimit(1).fixedSize()
+                                .foregroundStyle(pr.contains("checks failing") ? design.failed : design.text.opacity(0.85))
+                        }
+                    }
                     if let detail = row.detail, !detail.isEmpty {
                         Text(detail).font(design.small).foregroundStyle(design.detail.opacity(0.8)).lineLimit(1)
                     }
@@ -380,10 +417,21 @@ final class HoverHostingView<V: View>: NSHostingView<V> {
     override func mouseExited(with event: NSEvent) { onHover(false) }
 }
 
+// The list is a ScrollView, whose AppKit views don't take a click on a window that isn't key: the first click
+// would only make the panel key. Becoming key on mouse-down lets that click through; non-activating, so the
+// app you were in stays active.
+final class IslandPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown && !isKeyWindow { makeKey() }
+        super.sendEvent(event)
+    }
+}
+
 final class Island: NSObject {
     let store = Store()
     let state = IslandState()
-    let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    let panel = IslandPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     var host: HoverHostingView<IslandView>!
     var expanded = false
     var notch = CGSize(width: 180, height: 32)
@@ -428,7 +476,12 @@ final class Island: NSObject {
     func hovered(_ inside: Bool) {
         hoverWork?.cancel()
         // expand only if the cursor rests on the notch, so passing through to the menu bar doesn't open it
-        let work = DispatchWorkItem { [weak self] in self?.setExpanded(inside) }
+        // and only from the pill: while collapsing, the window keeps its full size for the spring, and moving
+        // back into that empty space mustn't reopen it
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.setExpanded(inside && (self.expanded || self.onPill()))
+        }
         hoverWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (inside ? 0.15 : 0.25), execute: work)
     }
@@ -442,9 +495,19 @@ final class Island: NSObject {
         withAnimation(spring) { state.expanded = value }
         if !value {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                if self?.expanded == false { self?.layout() }
+                guard let self, !self.expanded else { return }
+                self.layout()
+                // the cursor may already rest on the pill; shrinking under it sends no mouse-entered
+                if self.onPill() { self.hovered(true) }
             }
         }
+    }
+
+    func onPill() -> Bool {
+        let f = panel.screen?.frame ?? NSScreen.main?.frame ?? .zero
+        let pill = NSRect(x: f.midX - collapsed.width / 2, y: f.maxY - collapsed.height,
+                          width: collapsed.width, height: collapsed.height)
+        return pill.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)  // the top edge itself counts
     }
 
     func layout() {

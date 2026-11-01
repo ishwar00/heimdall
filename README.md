@@ -19,6 +19,9 @@ Codex's own activity view orders them.
     scheduled automation turns don't count as activity.
   - **Rearrange:** hover a Priority row and drag its six-dot grip (right edge) to move it. Your order is kept in
     `~/Library/Application Support/ThreadIsland/state.json`; threads that join still go to the bottom.
+  - **Open PRs** holds idle threads that created a PR that's still open, oldest PR first, with its number
+    and status (draft, checks failing, changes requested, approved, in review). A thread leaves when its
+    PRs are merged or closed. Only PRs the thread created count, not ones it mentions or reviews.
   - **Day sections** sort by when you last sent a message.
 
   Each row starts with the app icon, so you can scan for "the Codex one", and shows its age.
@@ -73,6 +76,9 @@ Run `threads` yourself to see the raw data.
 
 ## Limits
 
+- PR status comes from GitHub through `gh` (`gh auth login` once), fetched at most every 5 minutes, so a
+  merge can take that long to show. A thread drops out of the list after 7 days without your messages,
+  even with an open PR.
 - Codex and Claude Code don't publish these file formats. An update can break a source; the health line
   tells you when.
 - A Codex thread shows "needs you" when it asked you a question (its `request_user_input` tool) that you
