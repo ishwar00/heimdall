@@ -12,6 +12,7 @@ import ipaddress
 import socket
 import datetime
 import fcntl
+import http.client
 import glob
 import json
 import os
@@ -536,28 +537,54 @@ def favicon(url, key):
     if not url.startswith(('http://', 'https://')):
         return None
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh) ThreadIsland'}
-    page_host = urllib.parse.urlsplit(url).hostname
+    origin = urllib.parse.urlsplit(url)[:2]  # scheme and host:port of the page you saved
+
+    def own(u):
+        return urllib.parse.urlsplit(u)[:2] == origin
 
     def allowed(u):
-        """The page's own host (you saved it), or a public address: a page's HTML picks the icon URL, and
-        mustn't make this fetch reach localhost or your network for it. Checked on every redirect too."""
-        host = urllib.parse.urlsplit(u).hostname
-        if not host or urllib.parse.urlsplit(u).scheme not in ('http', 'https'):
+        """The page's own origin (you saved it), or a public address: a page's HTML picks the icon URL, and
+        mustn't make this fetch reach localhost or your network for it. Checked on every redirect too, and
+        again on the connected socket, so DNS answering differently the second time doesn't get around it."""
+        parts = urllib.parse.urlsplit(u)
+        if not parts.hostname or parts.scheme not in ('http', 'https'):
             return False
-        if host == page_host:
+        if own(u):
             return True
         try:
-            ips = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, None)}
+            ips = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(parts.hostname, None)}
         except (OSError, ValueError):
             return False
         return bool(ips) and all(ip.is_global for ip in ips)
+
+    def peer_ok(conn, u):
+        if not own(u) and not ipaddress.ip_address(conn.sock.getpeername()[0]).is_global:
+            raise OSError(f'{u} connected to a non-public address')
+
+    class HTTP(http.client.HTTPConnection):
+        def connect(self):
+            super().connect()
+            peer_ok(self, f'http://{self.host}:{self.port}')
+
+    class HTTPS(http.client.HTTPSConnection):
+        def connect(self):
+            http.client.HTTPConnection.connect(self)  # plain socket first: check where it went, then TLS
+            peer_ok(self, f'https://{self.host}:{self.port}')
+            self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+
+    class Handlers(urllib.request.HTTPHandler, urllib.request.HTTPSHandler):
+        def http_open(self, req):
+            return self.do_open(HTTP, req)
+
+        def https_open(self, req):
+            return self.do_open(HTTPS, req)
 
     class Checked(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, hdrs, newurl):
             if not allowed(newurl):
                 raise urllib.error.URLError(f'redirect to {newurl} not allowed')
             return super().redirect_request(req, fp, code, msg, hdrs, newurl)
-    opener = urllib.request.build_opener(Checked)
+    opener = urllib.request.build_opener(Checked, Handlers)
 
     def get(u, limit):
         if not allowed(u):
