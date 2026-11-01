@@ -130,9 +130,12 @@ def line_time(line, last):
 
 def is_activity(line, claude):
     """Conversation records only: not the bookkeeping both tools write into idle threads (Claude's system
-    notices and bridge records, Codex's settings sync when the app loads a thread)."""
+    notices, bridge records and local commands like /exit, Codex's settings sync when the app loads a thread)."""
     if claude:
-        return b'"type":"user"' in line or b'"type":"assistant"' in line
+        # replies, your messages, tool results; not other user-typed records such as a /exit when you only
+        # attached to look, or local command output
+        return (b'"type":"assistant"' in line
+                or b'"type":"user"' in line and (b'"kind":"human"' in line or b'"tool_use_id"' in line))
     return (b'"type":"response_item"' in line or b'"type":"event_msg"' in line) and b'"thread_settings_applied"' not in line
 
 
@@ -407,9 +410,10 @@ def claude_cli_rows(procs, gtty, sessions):
         # agent-view windows aren't threads; the jobs they show are listed above
         if d.get('sessionId') in seen or d.get('parkedJobId'):
             continue
-        # a headless `claude -p` another agent started (e.g. a review peer) has no window to jump to
+        # no terminal, no terminal session: the desktop app's own engine (listed as its desktop row) or a
+        # headless `claude -p` another agent started (nothing to jump to)
         p = proc.get(d['pid'])
-        if (d.get('entrypoint') or '').startswith('sdk') and (not p or p['tty'] == '/dev/??'):
+        if not p or p['tty'] == '/dev/??':
             continue
         try:
             path = transcript_path(d['sessionId'])
