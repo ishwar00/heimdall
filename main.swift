@@ -28,6 +28,7 @@ struct Payload: Decodable {
     let rows: [Row]
     let errors: [String]
     let pages: [Page]?
+    let recent: [Page]?  // removed pages, newest first, to pin back
 }
 
 struct JumpResult: Decodable {
@@ -54,6 +55,7 @@ func runThreads(_ args: [String], input: Data? = nil) -> Data {
 final class Store: ObservableObject {
     @Published var rows: [Row] = []
     @Published var pages: [Page] = []
+    @Published var recent: [Page] = []
     @Published var draft: Page?  // captured, waiting for its name
     @Published var sourceErrors: [String] = []
     // kept until a jump succeeds, so a refresh doesn't hide why the last click did nothing
@@ -75,6 +77,7 @@ final class Store: ObservableObject {
                 }
                 self.rows = payload.rows
                 self.pages = payload.pages ?? []
+                self.recent = payload.recent ?? []
                 self.sourceErrors = payload.errors
             }
         }
@@ -136,7 +139,14 @@ final class Store: ObservableObject {
 
     func removePage(_ page: Page) {
         pages.removeAll { $0.id == page.id }
+        recent.insert(page, at: 0)
         editPages(["op": "remove", "id": page.id ?? ""])
+    }
+
+    func restorePage(_ page: Page) {
+        recent.removeAll { $0.id == page.id }
+        pages.append(page)
+        editPages(["op": "restore", "id": page.id ?? ""])
     }
 
     private func editPages(_ edit: [String: Any]) {
@@ -217,15 +227,21 @@ let claudeIcon = NSWorkspace.shared.icon(forFile: "/Applications/Claude.app")
 
 var appIcons: [String: NSImage] = [:]
 func pageIcon(_ page: Page, size: CGFloat) -> some View {
-    let icon = page.icon.flatMap { path in
+    let favicon = page.icon.flatMap { path in
         appIcons[path] ?? NSImage(contentsOfFile: path).map { appIcons[path] = $0; return $0 }
-    } ?? appIcons[page.bundle] ?? {
+    }
+    // app icons carry their own margin; a favicon fills its square, so it's drawn smaller to match
+    if let favicon {
+        return AnyView(Image(nsImage: favicon).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+            .frame(width: size * 0.78, height: size * 0.78).frame(width: size, height: size))
+    }
+    let icon = appIcons[page.bundle] ?? {
         let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: page.bundle)
         let image = url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)!
         appIcons[page.bundle] = image
         return image
     }()
-    return Image(nsImage: icon).resizable().interpolation(.high).frame(width: size, height: size)
+    return AnyView(Image(nsImage: icon).resizable().interpolation(.high).frame(width: size, height: size))
 }
 
 func appIcon(_ row: Row, size: CGFloat) -> some View {
@@ -309,16 +325,7 @@ struct IslandView: View {
     var chips: some View {
         HStack(spacing: 6) {
             ForEach(store.pages, id: \.key) { page in
-                HStack(spacing: 5) {
-                    pageIcon(page, size: 14)
-                    Text(page.name).font(design.small.weight(.medium)).foregroundStyle(design.text).lineLimit(1)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .background(Capsule().fill(design.text.opacity(0.08)))
-                .frame(maxWidth: 150, alignment: .leading)
-                .contentShape(Capsule())
-                .onTapGesture { onOpen(page) }
-                .contextMenu { Button("Remove Page") { store.removePage(page) } }
+                PageChip(page: page, design: design, open: { onOpen(page) }, remove: { store.removePage(page) })
             }
             Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(design.detail)
                 .frame(width: 24, height: 24).background(Circle().fill(design.text.opacity(0.06)))
@@ -339,7 +346,9 @@ struct IslandView: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(store.pages, id: \.key) { page in
-                    PageRow(page: page, design: design).onTapGesture { onOpen(page) }
+                    PageRow(page: page, design: design, action: "xmark", help: "Remove",
+                            act: { store.removePage(page) })
+                        .onTapGesture { onOpen(page) }
                         .contextMenu { Button("Remove Page") { store.removePage(page) } }
                 }
                 if let draft = store.draft {
@@ -370,6 +379,17 @@ struct IslandView: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .contentShape(Rectangle())
                     .onTapGesture { addPage() }
+                }
+                if !store.recent.isEmpty {
+                    Text("Recently removed").font(design.header).foregroundStyle(design.detail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.top, 16).padding(.bottom, 4)
+                    ForEach(store.recent, id: \.key) { page in
+                        PageRow(page: page, design: design, action: "pin", help: "Pin back",
+                                act: { store.restorePage(page) }, dim: true)
+                            .onTapGesture { onOpen(page) }
+                            .contextMenu { Button("Pin Back") { store.restorePage(page) } }
+                    }
                 }
                 if store.pages.isEmpty && store.draft == nil {
                     Text("Go to a tab or app you keep coming back to, open the island, and save it here.")
@@ -501,24 +521,66 @@ struct PRIcon: Shape {
     }
 }
 
+// a saved page; on hover, one button at the right edge: remove it, or pin a removed one back
 struct PageRow: View {
     let page: Page
     let design: Design
+    let action: String, help: String
+    let act: () -> Void
+    var dim = false
     @State private var hover = false
 
     var body: some View {
         HStack(spacing: 12) {
-            pageIcon(page, size: 24)
+            pageIcon(page, size: 24).opacity(dim ? 0.6 : 1)
             VStack(alignment: .leading, spacing: 4) {
-                Text(page.name).font(design.title).foregroundStyle(design.text).lineLimit(1)
+                Text(page.name).font(design.title).foregroundStyle(dim ? design.detail : design.text).lineLimit(1)
                 Text(page.detail ?? page.app ?? "").font(design.small).foregroundStyle(design.detail).lineLimit(1)
             }
             Spacer(minLength: 0)
+            Image(systemName: action).font(.system(size: 11, weight: .semibold)).foregroundStyle(design.detail)
+                .frame(width: 26, height: 26).background(Circle().fill(design.text.opacity(0.08)))
+                .contentShape(Circle())
+                .opacity(hover ? 1 : 0)
+                .onTapGesture { act() }
+                .help(help)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 10).fill(design.text.opacity(hover ? 0.08 : 0)))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+    }
+}
+
+struct PageChip: View {
+    let page: Page
+    let design: Design
+    let open: () -> Void, remove: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            pageIcon(page, size: 14)
+            Text(page.name).font(design.small.weight(.medium)).foregroundStyle(design.text).lineLimit(1)
+                .frame(maxWidth: 110, alignment: .leading).fixedSize()
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(Capsule().fill(design.text.opacity(hover ? 0.14 : 0.08)))
+        .contentShape(Capsule())
+        .onTapGesture { open() }
+        .contextMenu { Button("Remove Page") { remove() } }
+        // remove sits on the corner, so showing it doesn't shift the chips
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "xmark").font(.system(size: 7, weight: .bold)).foregroundStyle(design.text)
+                .frame(width: 14, height: 14).background(Circle().fill(Color(white: 0.25)))
+                .offset(x: 4, y: -4)
+                .opacity(hover ? 1 : 0)
+                .onTapGesture { remove() }
+                .help("Remove")
+        }
+        .padding(4).contentShape(Rectangle())  // the hover area covers the corner badge, so it stays to be clicked
+        .onHover { hover = $0 }
+        .padding(-4)
     }
 }
 

@@ -8,6 +8,8 @@ Jumps: codex:// and claude:// deep links, Ghostty AppleScript (focus tab by tty,
 or open a new window running the resume command). `--jump` reads one row's JSON on stdin.
 """
 import contextlib
+import ipaddress
+import socket
 import datetime
 import fcntl
 import glob
@@ -18,6 +20,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -523,6 +526,7 @@ def open_page(page):
 
 
 FAVICONS = f'{HOME}/Library/Caches/ThreadIsland/favicons'
+RECENT_PAGES = 8
 
 
 def favicon(url, key):
@@ -532,9 +536,33 @@ def favicon(url, key):
     if not url.startswith(('http://', 'https://')):
         return None
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh) ThreadIsland'}
+    page_host = urllib.parse.urlsplit(url).hostname
+
+    def allowed(u):
+        """The page's own host (you saved it), or a public address: a page's HTML picks the icon URL, and
+        mustn't make this fetch reach localhost or your network for it. Checked on every redirect too."""
+        host = urllib.parse.urlsplit(u).hostname
+        if not host or urllib.parse.urlsplit(u).scheme not in ('http', 'https'):
+            return False
+        if host == page_host:
+            return True
+        try:
+            ips = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, None)}
+        except (OSError, ValueError):
+            return False
+        return bool(ips) and all(ip.is_global for ip in ips)
+
+    class Checked(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+            if not allowed(newurl):
+                raise urllib.error.URLError(f'redirect to {newurl} not allowed')
+            return super().redirect_request(req, fp, code, msg, hdrs, newurl)
+    opener = urllib.request.build_opener(Checked)
 
     def get(u, limit):
-        with urllib.request.urlopen(urllib.request.Request(u, headers=headers), timeout=4) as resp:
+        if not allowed(u):
+            raise ValueError(f'{u} not allowed')
+        with opener.open(urllib.request.Request(u, headers=headers), timeout=4) as resp:
             return resp.read(limit), resp.headers.get_content_type()
     candidates = []
     try:
@@ -548,8 +576,6 @@ def favicon(url, key):
         pass
     candidates.append(urllib.parse.urljoin(url, '/favicon.ico'))
     for u in candidates:
-        if not u.startswith(('http://', 'https://')):  # data: URLs and the like
-            continue
         try:
             body, kind = get(u, 1024 * 1024)
         except (OSError, ValueError):
@@ -579,11 +605,19 @@ def pages_edit(e):
             if page.get('bundle') and page.get('name') and all(p.get('id') != page['id'] for p in pages):
                 pages.append(page)
         elif e['op'] == 'remove':
-            for p in pages:
-                if p.get('id') == e['id'] and p.get('icon', '').startswith(FAVICONS):
+            # kept under Recently removed, newest first, so it can be pinned back
+            recent = state.setdefault('recent_pages', [])
+            recent[:0] = [p for p in pages if p.get('id') == e['id']]
+            state['pages'] = [p for p in pages if p.get('id') != e['id']]
+            for p in recent[RECENT_PAGES:]:
+                if p.get('icon', '').startswith(FAVICONS):
                     with contextlib.suppress(OSError):
                         os.remove(p['icon'])
-            state['pages'] = [p for p in pages if p.get('id') != e['id']]
+            del recent[RECENT_PAGES:]
+        elif e['op'] == 'restore':
+            recent = state.setdefault('recent_pages', [])
+            pages.extend(p for p in recent if p.get('id') == e['id'] and all(q.get('id') != e['id'] for q in pages))
+            state['recent_pages'] = [p for p in recent if p.get('id') != e['id']]
 
 
 def new_session_terminal():
@@ -861,8 +895,8 @@ def main():
     for r in rows:
         r['age'] = ago(r['ts'])
     with edited_state() as state:
-        pages = state.get('pages', [])
-    json.dump({'rows': rows, 'errors': ERRORS, 'pages': pages}, sys.stdout)
+        pages, recent = state.get('pages', []), state.get('recent_pages', [])
+    json.dump({'rows': rows, 'errors': ERRORS, 'pages': pages, 'recent': recent}, sys.stdout)
 
 
 if __name__ == '__main__':

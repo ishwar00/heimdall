@@ -29,8 +29,8 @@ Codex's own activity view orders them.
   you're there and press **+** (or swipe over to **Pages** and pick "Save where you are"), then name it.
   In Arc it saves the exact tab; in other apps, the app (and so its window and Space). Saved pages show
   as chips above your threads and as full rows in the Pages view; swipe left or right with two fingers
-  anywhere on the island to switch views. Right-click a page to remove it. The first Arc page asks to let
-  ThreadIsland control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service).
+  anywhere on the island to switch views. Hover a page for its remove button (or right-click it). Removed pages wait under Recently removed (the last 8), where hovering one shows a pin button to put it back. The first Arc page asks to let
+  ThreadIsland control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service). The fetch only goes to the page's own host or to public addresses, so a page can't point it at your machine or local network.
 - **Design:** right-click the island to pick one of three designs: Instrument (state lamps in one
   column), Ink (serif titles, age in the margin) or Tide (rounded type, state ring around the icon).
   Nothing moves unless you hover.
