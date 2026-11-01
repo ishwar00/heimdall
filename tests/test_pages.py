@@ -77,6 +77,11 @@ def serve(routes, hits=None):
     return server, f'http://127.0.0.1:{server.server_port}'
 
 
+def stop(server):
+    server.shutdown()
+    server.server_close()
+
+
 class Favicon(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -88,12 +93,12 @@ class Favicon(unittest.TestCase):
         urllib.request.getproxies = dict
         self.other_hits = []
         self.other, other_url = serve({'/icon.png': ('image/png', ICON)}, self.other_hits)
-        self.addCleanup(self.other.shutdown)
+        self.addCleanup(stop, self.other)
         self.other_icon = other_url + '/icon.png'
 
     def page(self, html, extra=None):
         server, url = serve(dict({'/': ('text/html', html.encode())}, **(extra or {})))
-        self.addCleanup(server.shutdown)
+        self.addCleanup(stop, server)
         return url + '/'
 
     def test_own_site_icon(self):
@@ -105,7 +110,7 @@ class Favicon(unittest.TestCase):
     def test_page_cant_point_the_fetch_at_your_machine(self):
         page_hits = []
         server, url = serve({'/': ('text/html', f'<link rel="icon" href="{self.other_icon}">'.encode())}, page_hits)
-        self.addCleanup(server.shutdown)
+        self.addCleanup(stop, server)
         self.assertIsNone(pages.favicon(url + '/', 'p1'))
         self.assertEqual(page_hits, ['/', '/favicon.ico'])  # it did read the page
         self.assertEqual(self.other_hits, [])
@@ -121,7 +126,7 @@ class Favicon(unittest.TestCase):
                 pass
         server = http.server.HTTPServer(('127.0.0.1', 0), Redirect)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.addCleanup(server.shutdown)
+        self.addCleanup(stop, server)
         self.assertIsNone(pages.favicon(f'http://127.0.0.1:{server.server_port}/', 'p1'))
         self.assertEqual(self.other_hits, [])
 

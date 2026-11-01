@@ -4,7 +4,7 @@ import os
 import re
 
 from . import core
-from .core import run, loads, epoch
+from .core import run, loads, epoch, read_json
 
 
 PR_CACHE = f'{core.HOME}/Library/Caches/ThreadIsland/prs.json'
@@ -88,7 +88,7 @@ def attach_prs(rows):
     """Mark rows whose thread has open PRs: 'pr' is the label shown, 'pr_since' when the first one opened."""
     os.makedirs(os.path.dirname(PR_CACHE), exist_ok=True)
     try:
-        cache = json.load(open(PR_CACHE))
+        cache = read_json(PR_CACHE)
     except (OSError, ValueError):
         cache = {}
     logs, known = cache.get('logs', {}), cache.get('status', {})

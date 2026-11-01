@@ -56,6 +56,11 @@ def plain(md):
     return re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', md).replace('**', '').replace('`', '')
 
 
+def read_json(path):
+    with open(path) as fh:
+        return json.load(fh)
+
+
 def loads(line):
     try:
         return json.loads(line)

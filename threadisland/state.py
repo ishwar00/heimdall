@@ -5,6 +5,7 @@ import json
 import os
 
 from . import core
+from .core import read_json
 
 
 STATE = f'{core.HOME}/Library/Application Support/ThreadIsland/state.json'
@@ -18,7 +19,7 @@ def edited_state():
     with open(STATE + '.lock', 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            state = json.load(open(STATE))
+            state = read_json(STATE)
         except (OSError, ValueError):
             state = {}
         state.setdefault('order', [])

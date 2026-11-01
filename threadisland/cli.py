@@ -6,6 +6,7 @@ from . import core
 from .core import ago, processes
 from .terminals import ghostty_ttys, jump
 from .codex import codex_rows
+from .events import sessions as hook_events
 from .claude import claude_desktop_rows, live_sessions, claude_cli_rows
 from .pages import capture_page, open_page, pages_edit
 from .prs import attach_prs
@@ -42,10 +43,15 @@ def main():
     procs = processes()
     gtty = ghostty_ttys()
     sessions = live_sessions()
+    try:
+        events = hook_events()
+    except Exception as e:  # noqa: BLE001 - shown in the panel; states then come from the logs alone
+        core.ERRORS.append(f'Hook events: {type(e).__name__}: {e}')
+        events = {}
     rows = []
     # each source reads private files that an app update can change; report a broken one instead of hiding it
-    for name, source in (('Codex', lambda: codex_rows(procs, gtty)), ('Claude app', lambda: claude_desktop_rows(sessions)),
-                         ('Claude CLI', lambda: claude_cli_rows(procs, gtty, sessions))):
+    for name, source in (('Codex', lambda: codex_rows(procs, gtty, events)), ('Claude app', lambda: claude_desktop_rows(sessions, events)),
+                         ('Claude CLI', lambda: claude_cli_rows(procs, gtty, sessions, events))):
         try:
             rows += source()
         except Exception as e:  # noqa: BLE001 - any failure here is shown in the panel

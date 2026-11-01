@@ -6,6 +6,7 @@ import sqlite3
 
 from . import core
 from .core import run, row, plain
+from .events import APPROVAL, WRITE_SLACK, hooked
 from .logs import scan_log, logged
 from .terminals import focus_target
 
@@ -25,7 +26,7 @@ def codex_turn(turn, rollout, asked=None):
     return '', None
 
 
-def codex_rows(procs, gtty):
+def codex_rows(procs, gtty, events):
     dbs = sorted(glob.glob(f'{core.HOME}/.codex/state_*.sqlite'),
                  key=lambda p: int(re.search(r'state_(\d+)', p).group(1)))
     if not dbs:
@@ -63,6 +64,16 @@ def codex_rows(procs, gtty):
             log = scan_log('codex', rollout) if rollout and os.path.exists(rollout) else {}
             src = 'codex' if source == 'vscode' else 'codex-cli'
             state, reply = codex_turn(log.get('turn'), rollout, log.get('asked')) if log else ('', None)
+            s = events.get(('codex', tid))
+            # Codex writes nothing to the rollout while it waits for an approval, so a write since the request
+            # means it was answered; with its automatic reviewer the request never waits on you
+            waits_on_you = bool(s and s['wait'] and log.get('reviewer') == 'user'
+                                and os.path.getmtime(rollout) <= s['wait'] + WRITE_SLACK)
+            hook = hooked(s, waits_on_you)
+            if state != 'needs you' and hook == 'needs you':
+                state, reply = 'needs you', APPROVAL
+            elif not state and hook == 'working':  # a long command writes nothing until it ends
+                state = 'working'
             if unread and not state:  # finished and not yet read: your turn, like a finished Claude thread
                 state = 'needs you'
             detail = reply or os.path.basename(cwd)

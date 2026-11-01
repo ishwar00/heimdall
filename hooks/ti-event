@@ -1,0 +1,26 @@
+#!/usr/bin/python3 -IS
+"""ti-event: Claude Code and Codex run this on their hook events (hooks/install); it appends one line to
+ThreadIsland's events file. Only the event, the session, the turn and the time: never prompt or reply text.
+Prints nothing (Claude adds a hook's output to the conversation) and never fails the agent."""
+import json
+import os
+import sys
+import time
+
+try:
+    d = json.load(sys.stdin)
+    rec = {'t': round(time.time(), 3), 'tool': sys.argv[1], 'event': d.get('hook_event_name'), 'session': d.get('session_id')}
+    if d.get('turn_id'):
+        rec['turn'] = d['turn_id']
+    if d.get('notification_type'):
+        rec['type'] = d['notification_type']
+    folder = os.path.expanduser('~/Library/Application Support/ThreadIsland')
+    os.makedirs(folder, exist_ok=True)
+    # one write with O_APPEND: lines from hooks running at the same time don't interleave
+    fd = os.open(f'{folder}/events.jsonl', os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.write(fd, (json.dumps(rec, separators=(',', ':')) + '\n').encode())
+    finally:
+        os.close(fd)
+except Exception:  # noqa: BLE001 - a hook must never break a turn
+    pass

@@ -68,6 +68,18 @@ def cx(t, typ, payload):
     return jline({'timestamp': iso(t), 'type': typ, 'payload': payload})
 
 
+def turn_context(t, reviewer):
+    return cx(t, 'turn_context', {'approval_policy': 'on-request', 'approvals_reviewer': reviewer})
+
+
+def hook(t, tool, event, session, kind=None):
+    """A line hooks/ti-event writes."""
+    rec = {'t': t, 'tool': tool, 'event': event, 'session': session}
+    if kind:
+        rec['type'] = kind
+    return jline(rec)
+
+
 def turn_started(t, trigger='composer'):
     return cx(t, 'event_msg', {'type': 'task_started', 'turn_attribution': {'turn_trigger': trigger}})
 
@@ -152,6 +164,19 @@ def build(home, now, live_pid, headless_pid):
     codex('cx-subagent', 'subagent one', 'vscode', now - H, now - H, now - H, [user_message(now - H)], now - H)
     codex('cx-old', 'old one', 'vscode', now - 9 * 24 * H, now - 9 * 24 * H, now - 9 * 24 * H,
           [user_message(now - 9 * 24 * H)], now - 9 * 24 * H)
+    # hooks: waiting for you to approve a command (you review its approvals); the write a second after it asked
+    # was already under way, not an answer
+    codex('cx-approval', 'deploy script', 'vscode', now - 20 * 60, now - 5 * 60 + 1, now - H,
+          [user_message(now - 20 * 60), turn_context(now - 20 * 60, 'user'), turn_started(now - 20 * 60),
+           agent_step(now - 5 * 60 + 1)], now - 5 * 60 + 1)
+    # the same request under Codex's automatic reviewer doesn't wait on you: still working
+    codex('cx-autoreview', 'lint fixes', 'vscode', now - 30 * 60, now - 30 * 60, now - H,
+          [user_message(now - 30 * 60), turn_context(now - 30 * 60, 'auto_review'), turn_started(now - 30 * 60),
+           agent_step(now - 15 * 60)], now - 15 * 60)
+    # you approved: it ran a command since
+    codex('cx-approved', 'db migration', 'vscode', now - 25 * 60, now - 30, now - H,
+          [user_message(now - 25 * 60), turn_context(now - 25 * 60, 'user'), turn_started(now - 25 * 60),
+           agent_step(now - 30)], now - 30)
     # its rollout can't be read: reported in errors, the other threads still list
     broken = codex('cx-broken', 'broken rollout', 'vscode', now - 2 * H, now - 2 * H, now - 2 * H, [], now - 2 * H)
     os.remove(broken)
@@ -190,6 +215,9 @@ def build(home, now, live_pid, headless_pid):
     # its PR is merged: not in Open PRs
     job('job-merged', 'sid-merged', 'old fix', 'done', now - 3 * 24 * H,
         [human(now - 30 * H), pr_created(now - 29 * H, PR_MERGED), reply(now - 29 * H)], now - 29 * H)
+    # its turn is running (the hooks saw it start), but its state file still says done from the last turn
+    job('job-running', 'sid-running', 'slow build', 'done', now - 5 * H,
+        [human(now - 3 * 60), tool_result(now - 2 * 60)], now - 2 * 60, 'built')
     # mid-rewrite: skipped quietly, picked up on the next refresh
     write(f'{home}/.claude/jobs/job-partial/state.json', ['{"sessionId": "sid-'], now - 60)
 
@@ -215,6 +243,26 @@ def build(home, now, live_pid, headless_pid):
     write(f'{desktop}/local_old.json',
           [json.dumps({'sessionId': 'local_old', 'title': 'archived', 'isArchived': True,
                        'latestUserFrameAt': int((now - H) * 1000)})], now - H)
+
+    # ---------------- what the hooks reported
+    write(f'{home}/Library/Application Support/ThreadIsland/events.jsonl', [
+        hook(now - 20 * 60, 'codex', 'UserPromptSubmit', 'cx-approval'),
+        hook(now - 5 * 60, 'codex', 'PermissionRequest', 'cx-approval'),
+        hook(now - 30 * 60, 'codex', 'UserPromptSubmit', 'cx-autoreview'),
+        hook(now - 14 * 60, 'codex', 'PermissionRequest', 'cx-autoreview'),
+        hook(now - 25 * 60, 'codex', 'UserPromptSubmit', 'cx-approved'),
+        hook(now - 10 * 60, 'codex', 'PermissionRequest', 'cx-approved'),
+        # a Claude permission prompt in the CLI session, nothing written to its transcript since
+        hook(now - 50 * 60, 'claude', 'UserPromptSubmit', 'sid-cli'),
+        hook(now - 44 * 60, 'claude', 'Notification', 'sid-cli', 'permission_prompt'),
+        # a background job's turn still running though its state file still says done
+        hook(now - 3 * 60, 'claude', 'UserPromptSubmit', 'sid-running'),
+        # a finished turn and Claude's idle reminder change nothing
+        hook(now - 26 * H, 'claude', 'UserPromptSubmit', 'sid-idle'),
+        hook(now - 25 * H, 'claude', 'Stop', 'sid-idle'),
+        hook(now - 25 * H + 60, 'claude', 'Notification', 'sid-idle', 'idle_prompt'),
+        'not json',
+    ], now - 120)
 
     # ---------------- ThreadIsland's own state: a dragged Priority order, saved pages
     write(f'{home}/Library/Application Support/ThreadIsland/state.json',

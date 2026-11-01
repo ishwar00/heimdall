@@ -1,16 +1,26 @@
 """Claude Code threads: the desktop Code tab, background jobs and live CLI sessions."""
 import glob
-import json
 import os
 import re
 
 from . import core
-from .core import row, epoch
+from .core import row, epoch, read_json
+from .events import APPROVAL, WRITE_SLACK, hooked
 from .logs import scan_log, logged
 from .terminals import focus_target
 
 
-def claude_desktop_rows(sessions):
+def with_hooks(state, detail, s, path):
+    """A permission prompt or a running turn the hooks saw wins over a summary written after the last turn.
+    Claude writes nothing to the transcript while a permission prompt is open, so a write since means it was
+    answered."""
+    hook = hooked(s, bool(s and s['wait'] and path and os.path.getmtime(path) <= s['wait'] + WRITE_SLACK))
+    if hook == 'needs you':
+        return hook, APPROVAL
+    return (hook or state), detail
+
+
+def claude_desktop_rows(sessions, events):
     busy = {d.get('sessionId') for d in sessions if d.get('status') == 'busy'}
     rows = []
     pattern = f'{core.HOME}/Library/Application Support/Claude/claude-code-sessions/*/*/local_*.json'
@@ -19,7 +29,7 @@ def claude_desktop_rows(sessions):
             if os.path.getmtime(f) < core.CUTOFF:  # files are large; mtime >= lastActivityAt, so skip unparsed
                 continue
             try:
-                d = json.load(open(f))
+                d = read_json(f)
             except ValueError:  # being rewritten right now; next refresh reads it
                 continue
             # your last message, like Codex's recency_at; lastActivityAt moves with every agent step
@@ -31,10 +41,10 @@ def claude_desktop_rows(sessions):
             state = ('working' if d.get('cliSessionId') in busy
                      else 'needs you' if summary.get('status_category') == 'blocked' else '')
             path = transcript_path(d.get('cliSessionId'))
+            state, detail = with_hooks(state, summary.get('status_detail') or d.get('cwd', ''),
+                                       events.get(('claude', d.get('cliSessionId'))), path)
             log = scan_log('claude', path) if path else {}
-            r = row(d['sessionId'], ts, 'claude-app', state, d.get('title') or '(untitled)',
-                    summary.get('status_detail') or d.get('cwd', ''),
-                    'url', f"claude://code/continue?session={d['sessionId']}")
+            r = row(d['sessionId'], ts, 'claude-app', state, d.get('title') or '(untitled)', detail, 'url', f"claude://code/continue?session={d['sessionId']}")
             r['created'] = (d.get('createdAt') or 0) / 1000
             rows.append(logged(r, log, (d.get('lastActivityAt') or 0) / 1000, ('claude', path)))
         except Exception as e:  # noqa: BLE001
@@ -52,7 +62,7 @@ def live_sessions():
     out = []
     for f in glob.glob(f'{core.HOME}/.claude/sessions/*.json'):
         try:
-            d = json.load(open(f))
+            d = read_json(f)
             os.kill(d['pid'], 0)
         except (OSError, ValueError, KeyError, TypeError):
             continue
@@ -60,7 +70,7 @@ def live_sessions():
     return out
 
 
-def claude_cli_rows(procs, gtty, sessions):
+def claude_cli_rows(procs, gtty, sessions, events):
     proc = {p['pid']: p for p in procs}
     attached = {}  # job name/id -> where its `claude attach` runs
     for p in procs:
@@ -84,7 +94,7 @@ def claude_cli_rows(procs, gtty, sessions):
         jid = os.path.basename(os.path.dirname(f))
         try:
             try:
-                d = json.load(open(f))
+                d = read_json(f)
             except ValueError:  # being rewritten right now; next refresh reads it
                 continue
             mtime = os.path.getmtime(f)
@@ -92,15 +102,16 @@ def claude_cli_rows(procs, gtty, sessions):
                 continue
             seen.add(d.get('sessionId'))
             path = transcript_path(d.get('sessionId'))
-            log = scan_log('claude', path, sent=True) if path else {}
             # state.json lags a reply (stays 'blocked' until the next summary); a busy live session wins, as in `claude agents`
             state = 'working' if jid in busy_jobs else {'blocked': 'needs you'}.get(d.get('state'), d.get('state') or '')
+            log = scan_log('claude', path, sent=True) if path else {}
+            state, detail = with_hooks(state, d.get('detail') or '', events.get(('claude', d.get('sessionId'))), path)
             title = d.get('name') or d.get('displayIntent') or d.get('intent') or jid
             target = next((attached[k] for k in (jid, d.get('name'), d.get('sessionId')) if k in attached), None)
             if target:
-                r = row(jid, log.get('sent') or mtime, 'claude-bg', state, title, d.get('detail') or '', *target)
+                r = row(jid, log.get('sent') or mtime, 'claude-bg', state, title, detail, *target)
             else:
-                r = row(jid, log.get('sent') or mtime, 'claude-bg', state, title, d.get('detail') or '', 'tab',
+                r = row(jid, log.get('sent') or mtime, 'claude-bg', state, title, detail, 'tab',
                         f'claude attach {jid}', d.get('cwd') or core.HOME)
             r['created'] = epoch(d['createdAt']) if d.get('createdAt') else mtime
             rows.append(logged(r, log, mtime, ('claude', path)))
@@ -120,12 +131,13 @@ def claude_cli_rows(procs, gtty, sessions):
             path = transcript_path(d['sessionId'])
             log = scan_log('claude', path, sent=True, title=True) if path else {}
             updated = (d.get('updatedAt') or d.get('startedAt') or 0) / 1000
-            state = 'working' if d.get('status') == 'busy' else ''
+            state, detail = with_hooks('working' if d.get('status') == 'busy' else '', d.get('cwd', ''),
+                                       events.get(('claude', d['sessionId'])), path)
             title = d.get('name') if d.get('nameSource') == 'user' else None
             title = title or log.get('title') or d.get('name') or d['sessionId']
             target = focus_target(proc[d['pid']], gtty, proc) if d['pid'] in proc else None
             # other terminals (Terminal.app, iTerm2, ...) aren't supported yet: the row shows but doesn't jump
-            r = row(d['sessionId'], log.get('sent') or updated, 'claude-cli', state, title, d.get('cwd', ''),
+            r = row(d['sessionId'], log.get('sent') or updated, 'claude-cli', state, title, detail,
                     *(target or ('none', '')))
             r['created'] = (d.get('startedAt') or 0) / 1000
             rows.append(logged(r, log, updated, ('claude', path)))

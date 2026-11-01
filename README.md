@@ -71,6 +71,18 @@ On the first jump into Ghostty, macOS asks whether ThreadIsland may control Ghos
 To start it at login, add `~/Applications/ThreadIsland.app` in System Settings → General → Login Items.
 Right-click the island to quit.
 
+Optional, recommended: let Claude Code and Codex tell ThreadIsland when a turn starts, ends or waits for your
+approval. Without it, a Codex thread waiting for you to approve a command shows as working.
+
+```sh
+~/.local/share/thread-island/hooks/install            # --remove takes it out again
+```
+
+It adds one hook command to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping your own hooks
+(the first run saves each file as `<file>.threadisland-backup`). Codex asks once whether to run new hooks
+("Review hooks"): allow them, and restart Codex. The hook writes only the event, session, turn and time to
+`~/Library/Application Support/ThreadIsland/events.jsonl`, never what you or the agent wrote.
+
 ## How it works
 
 `threads` (Python, standard library only) gathers every source into one JSON list, and `threads --jump`
@@ -82,7 +94,8 @@ Run `threads` yourself to see the raw data.
 | Path | What's there |
 |---|---|
 | `threads` | the command the app runs; starts `threadisland.cli` |
-| `threadisland/` | `codex.py`, `claude.py` (sources), `logs.py` (reading their logs), `prs.py`, `sections.py`, `pages.py`, `terminals.py` (finding and opening terminals), `state.py`, `core.py` |
+| `threadisland/` | `codex.py`, `claude.py` (sources), `logs.py` (reading their logs), `events.py` (what the hooks reported), `prs.py`, `sections.py`, `pages.py`, `terminals.py` (finding and opening terminals), `state.py`, `core.py` |
+| `hooks/` | `ti-event`, the hook the agents run, and `install` |
 | `app/` | the SwiftUI panel: `Model`, `Store`, `Design`, `Icons`, `IslandView`, `Rows`, `Panel`, and `main.swift` to start it |
 | `tests/` | `fixtures.py` builds a synthetic home folder in the apps' file shapes, one record per past bug; `test_golden.py` runs `threads` over it against `golden.json` |
 
@@ -103,6 +116,9 @@ the diff of `tests/golden.json`. Fixtures are synthetic on purpose: real transcr
 - Codex and Claude Code don't publish these file formats. An update can break a source; the health line
   tells you when.
 - A Codex thread shows "needs you" when it asked you a question (its `request_user_input` tool) that you
-  haven't answered yet, with the question as its detail line. Codex doesn't record when it waits for a
-  command approval, so that wait shows as working; a turn with no writes for 10 minutes stops counting.
+  haven't answered yet, with the question as its detail line. A wait for a command approval shows only
+  with the hooks installed, and only when you review that thread's approvals (with Codex's automatic
+  review it isn't waiting on you). Codex writes nothing while an approved command runs, so a long command
+  you approved keeps showing "needs you" until it finishes. Without the hooks, a turn with no writes for 10 minutes stops counting
+  as working.
 - Live sessions in terminals other than Ghostty and Warp show in the list but can't be jumped to.

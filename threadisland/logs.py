@@ -52,10 +52,11 @@ def scan_log(kind, path, sent=False, title=False):
               only while the thread is in Priority; the same rule that puts it there, so a long turn or a
               long wait on you can't reorder Priority without the thread leaving it;
     turn    - Codex: its latest turn event; sent, title - Claude, when asked: your last message, its name;
-    asked   - Codex: the question it asked you (request_user_input) if you haven't answered since."""
+    asked   - Codex: the question it asked you (request_user_input) if you haven't answered since;
+    reviewer - Codex: who approves the commands of its latest turn ('user' is you, else Codex's automatic review)."""
     out = {}
     claude = kind == 'claude'
-    need_run, need_sent, need_title, need_turn, need_ask = True, sent, title, not claude, not claude
+    need_run, need_sent, need_title, need_turn, need_ask, need_ctx = True, sent, title, not claude, not claude, not claude
     run_start = ai = None
     scanned = 0
     turn_times = []  # Codex: activity times newer than the last task_started seen, kept until we know who started it
@@ -111,7 +112,11 @@ def scan_log(kind, path, sent=False, title=False):
                 except ValueError:
                     questions = [{}]
                 out['asked'], need_ask = plain(questions[0].get('title') or questions[0].get('question') or '') or 'Asked you a question', False
-        if not (need_run or need_sent or need_title or need_turn or need_ask):
+        if need_ctx and b'"turn_context"' in line:
+            rec = loads(line)
+            if rec.get('type') == 'turn_context':
+                out['reviewer'], need_ctx = (rec.get('payload') or {}).get('approvals_reviewer'), False
+        if not (need_run or need_sent or need_title or need_turn or need_ask or need_ctx):
             break
     for t in turn_times:  # before the first turn started
         if need_run:
