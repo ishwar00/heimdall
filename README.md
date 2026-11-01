@@ -31,9 +31,8 @@ Codex's own activity view orders them.
   as chips above your threads and as full rows in the Pages view; swipe left or right with two fingers
   anywhere on the island to switch views. Hover a page for its remove button (or right-click it). Removed pages wait under Recently removed (the last 8), where hovering one shows a pin button to put it back. The first Arc page asks to let
   ThreadIsland control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service). The fetch only goes to the page's own host or to public addresses, so a page can't point it at your machine or local network.
-- **Design:** right-click the island to pick one of three designs: Instrument (state lamps in one
-  column), Ink (serif titles, age in the margin) or Tide (rounded type, state ring around the icon).
-  Nothing moves unless you hover.
+- **Design:** one calm look: a lit lamp at the left edge of a row shows its state (orange needs you,
+  green working). Nothing moves unless you hover. Right-click the island to quit.
 - **Health:** each source reads files that an app update can change. If a source breaks, a red line in
   the panel (and a triangle on the pill) says which one, so the list never silently shrinks. One
   unreadable thread is reported and skipped; the rest of its source still shows. A click that fails to
@@ -75,10 +74,26 @@ Right-click the island to quit.
 ## How it works
 
 `threads` (Python, standard library only) gathers every source into one JSON list, and `threads --jump`
-opens one row. `main.swift` is only the UI: a borderless panel at the notch that runs `threads` every
+opens one row. The Swift app is only the UI: a borderless panel at the notch that runs `threads` every
 32 s (every 4 s while open, and right away when you open it). It never pops up on its own: you look when you want to.
 
 Run `threads` yourself to see the raw data.
+
+| Path | What's there |
+|---|---|
+| `threads` | the command the app runs; starts `threadisland.cli` |
+| `threadisland/` | `codex.py`, `claude.py` (sources), `logs.py` (reading their logs), `prs.py`, `sections.py`, `pages.py`, `terminals.py` (finding and opening terminals), `state.py`, `core.py` |
+| `app/` | the SwiftUI panel: `Model`, `Store`, `Design`, `Icons`, `IslandView`, `Rows`, `Panel`, and `main.swift` to start it |
+| `tests/` | `fixtures.py` builds a synthetic home folder in the apps' file shapes, one record per past bug; `test_golden.py` runs `threads` over it against `golden.json` |
+
+Tests (no network, nothing read from your real home folder):
+
+```sh
+/usr/bin/python3 -m unittest discover tests
+```
+
+After an intended change to the listing, regenerate the expected output with `UPDATE_GOLDEN=1` and review
+the diff of `tests/golden.json`. Fixtures are synthetic on purpose: real transcripts hold private work.
 
 ## Limits
 
