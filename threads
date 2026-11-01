@@ -18,6 +18,8 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 
 HOME = os.path.expanduser('~')
 WINDOW_DAYS = 7
@@ -441,6 +443,149 @@ GHOSTTY_TAB = '''on run argv
 end run'''
 
 
+ARC = 'company.thebrowser.Browser'
+# Arc's scripting: https://resources.arc.net/hc/en-us/articles/19212718608151-Arc-for-macOS-AppleScript-API
+# fields joined by the unit separator (0x1F), which titles and URLs don't contain
+ARC_CAPTURE = '''set d to ASCII character 31
+tell application "Arc" to tell front window
+    return (id of active tab) & d & (title of active tab) & d & (URL of active tab) & d & (id of active space) & d & (title of active space)
+end tell'''
+ARC_SELECT = '''on run argv
+    tell application "Arc"
+        activate
+        tell front window
+            try
+                tell (first space whose id is (item 2 of argv)) to focus
+            end try
+            try
+                tell (first tab whose id is (item 1 of argv)) to select
+                return "ok"
+            end try
+            repeat with s in spaces
+                try
+                    tell (first tab of s whose id is (item 1 of argv)) to select
+                    return "ok"
+                end try
+            end repeat
+            -- Arc can give a tab a new id (after a restart); the same page still open counts
+            repeat with s in spaces
+                try
+                    tell (first tab of s whose URL is (item 3 of argv)) to select
+                    return "ok"
+                end try
+            end repeat
+        end tell
+    end tell
+    return "missing"
+end run'''
+
+
+def front_app():
+    """(bundle id, name) of the app you're in; the island never takes that from it."""
+    info = run(['lsappinfo', 'info', '-only', 'bundleid', '-only', 'name', run(['lsappinfo', 'front']).strip()])
+    bundle = re.search(r'"CFBundleIdentifier"="([^"]*)"', info)
+    name = re.search(r'"LSDisplayName"="([^"]*)"', info)
+    return (bundle.group(1) if bundle else None), (name.group(1) if name else None)
+
+
+def capture_page():
+    """Where you are right now: the Arc tab you're on, or the app (one window per app in practice)."""
+    bundle, name = front_app()
+    if not bundle:
+        return {'error': 'no app in front'}
+    page = {'bundle': bundle, 'app': name, 'name': name}
+    if bundle == ARC:
+        # the first time, macOS asks whether ThreadIsland may control Arc: leave time to answer
+        try:
+            p = subprocess.run(['osascript', '-e', ARC_CAPTURE], capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            return {'error': "Arc didn't answer; try again"}
+        parts = p.stdout.rstrip('\n').split('\x1f')
+        if p.returncode != 0 or len(parts) != 5:
+            # saving plain Arc instead would look like a saved tab and only ever open Arc
+            return {'error': 'couldn\'t read the Arc tab: ' + (p.stderr.strip() or 'no tab open')
+                    + ('. Allow ThreadIsland in System Settings > Privacy & Security > Automation' if '-1743' in p.stderr else '')}
+        tab, title, url, space, space_title = parts
+        page.update(tab=tab, url=url, space=space, name=title or name, detail=f'{space_title} space')
+    return page
+
+
+def open_page(page):
+    if page.get('tab'):
+        p = subprocess.run(['osascript', '-', page['tab'], page.get('space') or '', page.get('url') or ''], input=ARC_SELECT,
+                           capture_output=True, text=True, timeout=30)
+        if p.stdout.strip() == 'ok':
+            return None
+        if page.get('url'):  # closed since: open it again
+            return checked(['open', '-b', ARC, page['url']])
+        return p.stderr.strip() or 'tab not found'
+    return checked(['open', '-b', page['bundle']])
+
+
+FAVICONS = f'{HOME}/Library/Caches/ThreadIsland/favicons'
+
+
+def favicon(url, key):
+    """The site's own icon for a saved tab: its <link rel="icon">, else /favicon.ico. Fetched from the site
+    once when you save (no third-party favicon service, which would see every site you save), kept on disk.
+    None if there isn't one; the page then shows the browser's icon."""
+    if not url.startswith(('http://', 'https://')):
+        return None
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh) ThreadIsland'}
+
+    def get(u, limit):
+        with urllib.request.urlopen(urllib.request.Request(u, headers=headers), timeout=4) as resp:
+            return resp.read(limit), resp.headers.get_content_type()
+    candidates = []
+    try:
+        html = get(url, 512 * 1024)[0].decode('utf-8', 'replace')
+        for tag in re.findall(r'<link\b[^>]*>', html, re.I):
+            rel = re.search(r'\brel\s*=\s*["\']?([^"\'>]+)', tag, re.I)
+            href = re.search(r'\bhref\s*=\s*["\']?([^"\' >]+)', tag, re.I)
+            if rel and href and 'icon' in rel.group(1).lower() and 'mask' not in rel.group(1).lower():
+                candidates.append(urllib.parse.urljoin(url, href.group(1)))
+    except (OSError, ValueError):
+        pass
+    candidates.append(urllib.parse.urljoin(url, '/favicon.ico'))
+    for u in candidates:
+        if not u.startswith(('http://', 'https://')):  # data: URLs and the like
+            continue
+        try:
+            body, kind = get(u, 1024 * 1024)
+        except (OSError, ValueError):
+            continue
+        if body and kind.startswith('image/'):
+            os.makedirs(FAVICONS, exist_ok=True)
+            path = os.path.join(FAVICONS, re.sub(r'[^A-Za-z0-9-]', '', key) + '.' + (kind.split('/')[1].split('+')[0] or 'img'))
+            with open(path, 'wb') as fh:
+                fh.write(body)
+            return path
+    return None
+
+
+def pages_edit(e):
+    icon = None
+    if e['op'] == 'add' and isinstance(e['page'].get('url'), str) and isinstance(e['page'].get('id'), str):
+        icon = favicon(e['page']['url'], e['page']['id'])  # before the lock: the network can be slow
+    with edited_state() as state:
+        pages = state.setdefault('pages', [])
+        if e['op'] == 'add':
+            page = {k: v for k, v in e['page'].items()
+                    if k in ('id', 'bundle', 'app', 'name', 'tab', 'url', 'space', 'detail') and isinstance(v, str)}
+            page.setdefault('id', f'{time.time_ns():x}')  # the app sends one, so it can show the page right away
+            if icon:
+                page['icon'] = icon
+            # the app can't read a page without these; one bad entry would blank the whole list
+            if page.get('bundle') and page.get('name') and all(p.get('id') != page['id'] for p in pages):
+                pages.append(page)
+        elif e['op'] == 'remove':
+            for p in pages:
+                if p.get('id') == e['id'] and p.get('icon', '').startswith(FAVICONS):
+                    with contextlib.suppress(OSError):
+                        os.remove(p['icon'])
+            state['pages'] = [p for p in pages if p.get('id') != e['id']]
+
+
 def new_session_terminal():
     """Terminal for a session that isn't open anywhere: the one you were just in (the island never takes
     focus), else whichever is running (Ghostty first), else Ghostty."""
@@ -680,6 +825,19 @@ def main():
     if '--edit' in sys.argv:
         edit(json.load(sys.stdin))
         return
+    if '--page-capture' in sys.argv:
+        json.dump(capture_page(), sys.stdout)
+        return
+    if '--page-edit' in sys.argv:
+        pages_edit(json.load(sys.stdin))
+        return
+    if '--page-open' in sys.argv:
+        try:
+            error = open_page(json.load(sys.stdin))
+        except Exception as e:  # noqa: BLE001 - shown in the panel
+            error = f'{type(e).__name__}: {e}'
+        json.dump({'error': error}, sys.stdout)
+        return
 
     procs = processes()
     gtty = ghostty_ttys()
@@ -702,7 +860,9 @@ def main():
 
     for r in rows:
         r['age'] = ago(r['ts'])
-    json.dump({'rows': rows, 'errors': ERRORS}, sys.stdout)
+    with edited_state() as state:
+        pages = state.get('pages', [])
+    json.dump({'rows': rows, 'errors': ERRORS, 'pages': pages}, sys.stdout)
 
 
 if __name__ == '__main__':

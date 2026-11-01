@@ -1,6 +1,7 @@
 // ThreadIsland: a notch panel listing Codex + Claude Code threads. Hover to expand, click to jump.
 // All data and jumps come from ~/.local/bin/threads; this file is only the UI.
 import AppKit
+import Combine
 import SwiftUI
 
 let threadsScript = NSString(string: "~/.local/bin/threads").expandingTildeInPath
@@ -12,9 +13,21 @@ struct Row: Codable, Identifiable {
     var id: String { key }
 }
 
+// A place you saved: an Arc tab (tab, url, space) or an app
+struct Page: Codable, Equatable {
+    var id: String?
+    let bundle: String
+    let app: String?
+    var name: String
+    let tab: String?, url: String?, space: String?, detail: String?
+    var icon: String? = nil  // the site's favicon, fetched when saved
+    var key: String { id ?? "draft" }
+}
+
 struct Payload: Decodable {
     let rows: [Row]
     let errors: [String]
+    let pages: [Page]?
 }
 
 struct JumpResult: Decodable {
@@ -40,6 +53,8 @@ func runThreads(_ args: [String], input: Data? = nil) -> Data {
 
 final class Store: ObservableObject {
     @Published var rows: [Row] = []
+    @Published var pages: [Page] = []
+    @Published var draft: Page?  // captured, waiting for its name
     @Published var sourceErrors: [String] = []
     // kept until a jump succeeds, so a refresh doesn't hide why the last click did nothing
     @Published var jumpError: String?
@@ -59,6 +74,7 @@ final class Store: ObservableObject {
                     return
                 }
                 self.rows = payload.rows
+                self.pages = payload.pages ?? []
                 self.sourceErrors = payload.errors
             }
         }
@@ -84,6 +100,61 @@ final class Store: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             _ = runThreads(["--edit"], input: payload)
             DispatchQueue.main.async { self.refresh() }
+        }
+    }
+
+    // Save where you are: the script reads the app in front, which is still yours (the island never takes it)
+    private var capturing = false  // cleared on collapse, so a capture that returns after it is dropped
+    func capturePage() {
+        capturing = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let data = runThreads(["--page-capture"])
+            let page = try? JSONDecoder().decode(Page.self, from: data)
+            let error = (try? JSONDecoder().decode(JumpResult.self, from: data))?.error
+            DispatchQueue.main.async {
+                guard self.capturing else { return }
+                self.capturing = false
+                if let page { self.draft = page } else { self.jumpError = error ?? "couldn't read the app in front" }
+            }
+        }
+    }
+
+    func cancelDraft() {
+        capturing = false
+        draft = nil
+    }
+
+    func saveDraft() {
+        guard var page = draft else { return }
+        page.id = UUID().uuidString
+        page.name = page.name.trimmingCharacters(in: .whitespaces)
+        if page.name.isEmpty { page.name = page.app ?? page.bundle }
+        draft = nil
+        pages.append(page)
+        editPages(["op": "add", "page": (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(page))) ?? [:]])
+    }
+
+    func removePage(_ page: Page) {
+        pages.removeAll { $0.id == page.id }
+        editPages(["op": "remove", "id": page.id ?? ""])
+    }
+
+    private func editPages(_ edit: [String: Any]) {
+        guard let payload = try? JSONSerialization.data(withJSONObject: edit) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = runThreads(["--page-edit"], input: payload)
+            DispatchQueue.main.async { self.refresh() }
+        }
+    }
+
+    func open(_ page: Page) {
+        guard let payload = try? JSONEncoder().encode(page) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let data = runThreads(["--page-open"], input: payload)
+            let result = try? JSONDecoder().decode(JumpResult.self, from: data)
+            DispatchQueue.main.async {
+                self.jumpError = result == nil ? "threads script: no readable output (\(data.count) bytes)" : result?.error
+            }
         }
     }
 
@@ -144,6 +215,19 @@ let codexIcon = NSImage(contentsOfFile: "/Applications/ChatGPT.app/Contents/Reso
     ?? NSWorkspace.shared.icon(forFile: "/Applications/ChatGPT.app")
 let claudeIcon = NSWorkspace.shared.icon(forFile: "/Applications/Claude.app")
 
+var appIcons: [String: NSImage] = [:]
+func pageIcon(_ page: Page, size: CGFloat) -> some View {
+    let icon = page.icon.flatMap { path in
+        appIcons[path] ?? NSImage(contentsOfFile: path).map { appIcons[path] = $0; return $0 }
+    } ?? appIcons[page.bundle] ?? {
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: page.bundle)
+        let image = url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)!
+        appIcons[page.bundle] = image
+        return image
+    }()
+    return Image(nsImage: icon).resizable().interpolation(.high).frame(width: size, height: size)
+}
+
 func appIcon(_ row: Row, size: CGFloat) -> some View {
     Image(nsImage: row.src.hasPrefix("codex") ? codexIcon : claudeIcon)
         .resizable().interpolation(.high).frame(width: size, height: size)
@@ -151,6 +235,7 @@ func appIcon(_ row: Row, size: CGFloat) -> some View {
 
 final class IslandState: ObservableObject {
     @Published var expanded = false
+    @Published var view = 0  // 0 threads, 1 pages; a horizontal swipe switches
 }
 
 struct IslandView: View {
@@ -159,6 +244,8 @@ struct IslandView: View {
     @AppStorage("design") var designName = Design.instrument.name
     let notch: CGSize, collapsed: CGSize, full: CGSize
     let onPick: (Row) -> Void
+    let onOpen: (Page) -> Void
+    @FocusState private var naming: Bool
 
     var design: Design { Design.named(designName) }
     @State private var dragKey: String?
@@ -175,7 +262,18 @@ struct IslandView: View {
                 badgeWings
             }
             .frame(height: notch.height)
-            if state.expanded { list.transition(.opacity) }
+            if state.expanded {
+                VStack(spacing: 0) {
+                    switcher
+                    if state.view == 0 {
+                        VStack(spacing: 0) { chips; list }
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    } else {
+                        pagesList.transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                .transition(.opacity)
+            }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(.black)
@@ -189,6 +287,98 @@ struct IslandView: View {
             ForEach(Design.all, id: \.name) { Text($0.name).tag($0.name) }
         }
         Button("Quit ThreadIsland") { NSApp.terminate(nil) }
+    }
+
+    var switcher: some View {
+        HStack(spacing: 16) {
+            ForEach(Array(["Threads", "Pages"].enumerated()), id: \.offset) { i, name in
+                Text(name).font(design.header)
+                    .foregroundStyle(state.view == i ? design.text : design.detail.opacity(0.7))
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { state.view = i } }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 4)
+        // the name editor lives in Pages; leaving it (tap or swipe) drops the draft, so nothing hidden keeps
+        // the island open
+        .onChange(of: state.view) { _, view in if view != 1 { store.cancelDraft() } }
+    }
+
+    // saved pages as chips on the threads view: one click from opening the island
+    var chips: some View {
+        HStack(spacing: 6) {
+            ForEach(store.pages, id: \.key) { page in
+                HStack(spacing: 5) {
+                    pageIcon(page, size: 14)
+                    Text(page.name).font(design.small.weight(.medium)).foregroundStyle(design.text).lineLimit(1)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(Capsule().fill(design.text.opacity(0.08)))
+                .frame(maxWidth: 150, alignment: .leading)
+                .contentShape(Capsule())
+                .onTapGesture { onOpen(page) }
+                .contextMenu { Button("Remove Page") { store.removePage(page) } }
+            }
+            Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(design.detail)
+                .frame(width: 24, height: 24).background(Circle().fill(design.text.opacity(0.06)))
+                .contentShape(Circle())
+                .onTapGesture { addPage() }
+                .help("Save where you are as a page")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 6)
+    }
+
+    func addPage() {
+        store.capturePage()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { state.view = 1 }
+    }
+
+    var pagesList: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(store.pages, id: \.key) { page in
+                    PageRow(page: page, design: design).onTapGesture { onOpen(page) }
+                        .contextMenu { Button("Remove Page") { store.removePage(page) } }
+                }
+                if let draft = store.draft {
+                    HStack(spacing: 12) {
+                        pageIcon(draft, size: 24)
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Name", text: Binding(get: { store.draft?.name ?? "" }, set: { store.draft?.name = $0 }))
+                                .textFieldStyle(.plain).font(design.title).foregroundStyle(design.text)
+                                .focused($naming).onSubmit { store.saveDraft() }
+                                .onExitCommand { store.cancelDraft() }
+                            Text(draft.detail ?? draft.app ?? "").font(design.small).foregroundStyle(design.detail).lineLimit(1)
+                        }
+                        Text("Save").font(design.small.weight(.semibold)).foregroundStyle(design.text)
+                            .onTapGesture { store.saveDraft() }
+                        Text("Cancel").font(design.small).foregroundStyle(design.detail)
+                            .onTapGesture { store.cancelDraft() }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(design.text.opacity(0.08)))
+                    .onAppear { naming = true }
+                } else {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .semibold)).frame(width: 24, height: 24)
+                        Text("Save where you are").font(design.title)
+                        Spacer()
+                    }
+                    .foregroundStyle(design.detail)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture { addPage() }
+                }
+                if store.pages.isEmpty && store.draft == nil {
+                    Text("Go to a tab or app you keep coming back to, open the island, and save it here.")
+                        .font(design.small).foregroundStyle(design.detail).padding(.horizontal, 12).padding(.top, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 8).padding(.bottom, 8)
+        }
     }
 
     @ViewBuilder var badgeWings: some View {
@@ -311,6 +501,27 @@ struct PRIcon: Shape {
     }
 }
 
+struct PageRow: View {
+    let page: Page
+    let design: Design
+    @State private var hover = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            pageIcon(page, size: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(page.name).font(design.title).foregroundStyle(design.text).lineLimit(1)
+                Text(page.detail ?? page.app ?? "").font(design.small).foregroundStyle(design.detail).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(design.text.opacity(hover ? 0.08 : 0)))
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+    }
+}
+
 struct RowView: View {
     let row: Row
     let design: Design
@@ -421,9 +632,27 @@ final class HoverHostingView<V: View>: NSHostingView<V> {
 // would only make the panel key. Becoming key on mouse-down lets that click through; non-activating, so the
 // app you were in stays active.
 final class IslandPanel: NSPanel {
+    var onSwipe: (Int) -> Void = { _ in }  // +1: to the next view, -1: back
+    private var swipe: CGFloat = 0, swiped = false
+    private var axis: Character = "?"  // per gesture: "x" sideways (ours), "y" a scroll (the list's)
     override var canBecomeKey: Bool { true }
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown && !isKeyWindow { makeKey() }
+        // a two-finger horizontal swipe anywhere switches views; only the fingers count, not the momentum after
+        if event.type == .scrollWheel && event.hasPreciseScrollingDeltas && event.momentumPhase == [] {
+            if event.phase == .began { swipe = 0; swiped = false; axis = "?" }
+            let dx = event.scrollingDeltaX, dy = event.scrollingDeltaY
+            if axis == "?" && abs(dx) + abs(dy) > 3 { axis = abs(dx) > abs(dy) ? "x" : "y" }
+            if axis == "x" {
+                // follow the fingers whatever the natural-scrolling setting: fingers to the left, next view
+                swipe += event.isDirectionInvertedFromDevice ? dx : -dx
+                if !swiped && abs(swipe) > 30 {
+                    swiped = true
+                    onSwipe(swipe < 0 ? 1 : -1)
+                }
+                return
+            }
+        }
         super.sendEvent(event)
     }
 }
@@ -437,6 +666,8 @@ final class Island: NSObject {
     var notch = CGSize(width: 180, height: 32)
     var hoverWork: DispatchWorkItem?
     var ticks = 0
+    var draftWatch: AnyCancellable?
+    var jumping = false
     var collapsed = CGSize.zero
     let wing: CGFloat = 44, expandedSize = CGSize(width: 520, height: 480)
     let pad: CGFloat = 16  // window margin so the spring's overshoot isn't clipped
@@ -451,6 +682,15 @@ final class Island: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         host = HoverHostingView(rootView: view())
         host.onHover = { [weak self] inside in self?.hovered(inside) }
+        // saved or cancelled a page name with the cursor elsewhere: close now, as leaving would have
+        draftWatch = store.$draft.dropFirst().filter { $0 == nil }.receive(on: RunLoop.main).sink { [weak self] _ in
+            guard let self, self.expanded, !self.onIsland() else { return }
+            self.setExpanded(false)
+        }
+        panel.onSwipe = { [weak self] step in
+            guard let self, self.expanded else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { self.state.view = max(0, min(1, self.state.view + step)) }
+        }
         panel.contentView = host
         layout()
         panel.orderFrontRegardless()
@@ -467,10 +707,17 @@ final class Island: NSObject {
     }
 
     func view() -> IslandView {
-        IslandView(store: store, state: state, notch: notch, collapsed: collapsed, full: expandedSize) { [weak self] row in
-            self?.store.jump(row)
-            self?.setExpanded(false)
-        }
+        IslandView(store: store, state: state, notch: notch, collapsed: collapsed, full: expandedSize,
+                   onPick: { [weak self] row in
+                       self?.jumping = true
+                       self?.store.jump(row)
+                       self?.setExpanded(false)
+                   },
+                   onOpen: { [weak self] page in
+                       self?.jumping = true
+                       self?.store.open(page)
+                       self?.setExpanded(false)
+                   })
     }
 
     func hovered(_ inside: Bool) {
@@ -488,12 +735,19 @@ final class Island: NSObject {
 
     func setExpanded(_ value: Bool) {
         guard value != expanded else { return }
+        if !value && store.draft != nil && !onIsland() { return }  // naming a page: stay open until saved or cancelled
         expanded = value
         // The window jumps to full size and SwiftUI springs the shape inside it;
         // on collapse the window shrinks only after the spring settles.
         if value { store.refresh(); layout() }
         withAnimation(spring) { state.expanded = value }
         if !value {
+            state.view = 0
+            store.cancelDraft()
+            // a click made the panel key; give the keyboard back to the app you were in, unless a jump is
+            // already taking you elsewhere (activating it here would race that jump)
+            if panel.isKeyWindow && !jumping { NSWorkspace.shared.frontmostApplication?.activate() }
+            jumping = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 guard let self, !self.expanded else { return }
                 self.layout()
@@ -502,6 +756,8 @@ final class Island: NSObject {
             }
         }
     }
+
+    func onIsland() -> Bool { panel.frame.contains(NSEvent.mouseLocation) }
 
     func onPill() -> Bool {
         let f = panel.screen?.frame ?? NSScreen.main?.frame ?? .zero

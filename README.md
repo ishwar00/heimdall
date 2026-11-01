@@ -25,6 +25,12 @@ Codex's own activity view orders them.
   - **Day sections** sort by when you last sent a message.
 
   Each row starts with the app icon, so you can scan for "the Codex one", and shows its age.
+- **Pages:** save any place you keep coming back to and jump back with one click. Open the island while
+  you're there and press **+** (or swipe over to **Pages** and pick "Save where you are"), then name it.
+  In Arc it saves the exact tab; in other apps, the app (and so its window and Space). Saved pages show
+  as chips above your threads and as full rows in the Pages view; swipe left or right with two fingers
+  anywhere on the island to switch views. Right-click a page to remove it. The first Arc page asks to let
+  ThreadIsland control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service).
 - **Design:** right-click the island to pick one of three designs: Instrument (state lamps in one
   column), Ink (serif titles, age in the margin) or Tide (rounded type, state ring around the icon).
   Nothing moves unless you hover.
