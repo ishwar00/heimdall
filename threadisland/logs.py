@@ -53,10 +53,12 @@ def scan_log(kind, path, sent=False, title=False):
               long wait on you can't reorder Priority without the thread leaving it;
     turn    - Codex: its latest turn event; sent, title - Claude, when asked: your last message, its name;
     asked   - Codex: the question it asked you (request_user_input) if you haven't answered since;
-    reviewer - Codex: who approves the commands of its latest turn ('user' is you, else Codex's automatic review)."""
+    reviewer - Codex: who approves the commands of its latest turn ('user' is you, else Codex's automatic review);
+    call    - Codex: (tool name, time) of its latest tool call if it hasn't returned yet."""
     out = {}
     claude = kind == 'claude'
     need_run, need_sent, need_title, need_turn, need_ask, need_ctx = True, sent, title, not claude, not claude, not claude
+    need_call = not claude
     run_start = ai = None
     scanned = 0
     turn_times = []  # Codex: activity times newer than the last task_started seen, kept until we know who started it
@@ -116,7 +118,13 @@ def scan_log(kind, path, sent=False, title=False):
             rec = loads(line)
             if rec.get('type') == 'turn_context':
                 out['reviewer'], need_ctx = (rec.get('payload') or {}).get('approvals_reviewer'), False
-        if not (need_run or need_sent or need_title or need_turn or need_ask or need_ctx):
+        if need_call and (b'"function_call' in line or b'"custom_tool_call' in line):  # a call, or its output
+            payload = loads(line).get('payload') or {}
+            if payload.get('type') in ('function_call', 'custom_tool_call'):
+                out['call'] = (payload.get('name'), line_time(line, False))
+            need_call = payload.get('type') not in ('function_call', 'custom_tool_call',
+                                                    'function_call_output', 'custom_tool_call_output')
+        if not (need_run or need_sent or need_title or need_turn or need_ask or need_ctx or need_call):
             break
     for t in turn_times:  # before the first turn started
         if need_run:

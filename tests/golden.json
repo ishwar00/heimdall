@@ -152,6 +152,38 @@
    "ts": 1793171400.0
   },
   {
+   "action": "url",
+   "active": 1793172420.0,
+   "age": "10m",
+   "arg": "codex://threads/cx-browser",
+   "created": 1793169000.0,
+   "cwd": "",
+   "detail": "Waiting for your approval",
+   "entered": 1793172000.0,
+   "key": "cx-browser",
+   "section": "Priority",
+   "src": "codex",
+   "state": "needs you",
+   "title": "usage numbers",
+   "ts": 1793172000.0
+  },
+  {
+   "action": "url",
+   "active": 1793172580.0,
+   "age": "5m",
+   "arg": "codex://threads/cx-browsing",
+   "created": 1793169000.0,
+   "cwd": "",
+   "detail": "cx-browsing",
+   "entered": 1793172300.0,
+   "key": "cx-browsing",
+   "section": "Priority",
+   "src": "codex",
+   "state": "working",
+   "title": "read docs",
+   "ts": 1793172300.0
+  },
+  {
    "action": "tab",
    "active": 1793172480.0,
    "age": "3m",

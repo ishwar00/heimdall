@@ -4,8 +4,8 @@ import tempfile
 import unittest
 
 from fixtures import (H, agent_step, ai_title, big_output, custom_title, exit_command, human, question, reply,
-                      settings_sync, system_notice, tool_definitions, tool_result, turn_complete, turn_started,
-                      user_message)
+                      settings_sync, system_notice, tool_call, tool_definitions, tool_output, tool_result,
+                      turn_complete, turn_started, user_message)
 from threadisland import core, logs
 from threadisland.codex import codex_turn
 
@@ -102,6 +102,15 @@ class Logs(unittest.TestCase):
 
     def test_codex_tool_definition_is_not_a_question(self):
         self.assertNotIn('asked', self.codex(tool_definitions(), turn_started(NOW - 600)))
+
+    def test_codex_open_tool_call(self):
+        out = self.codex(turn_started(NOW - 600), tool_call(NOW - 120, 'js'))
+        self.assertEqual(out['call'][0], 'js')
+        self.assertTime(out['call'][1], NOW - 120)
+
+    def test_codex_tool_call_that_returned(self):
+        self.assertNotIn('call', self.codex(turn_started(NOW - 600), tool_call(NOW - 120, 'js'), tool_output(NOW - 100),
+                                            agent_step(NOW - 90)))
 
     # --- titles
     def test_latest_rename_wins(self):

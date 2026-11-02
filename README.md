@@ -117,7 +117,9 @@ the diff of `tests/golden.json`. Fixtures are synthetic on purpose: real transcr
 - Codex and Claude Code don't publish these file formats. An update can break a source; the health line
   tells you when.
 - A Codex thread shows "needs you" when it asked you a question (its `request_user_input` tool) that you
-  haven't answered yet, with the question as its detail line. A wait for a command approval shows only
+  haven't answered yet, with the question as its detail line, or when a browser step has waited more
+  than a minute (a prompt to allow a download, let Computer Use control an app, or pick a file; Codex
+  reports these nowhere, and 99% of browser steps finish within 15 s). A wait for a command approval shows only
   with the hooks installed, and only when you review that thread's approvals (with Codex's automatic
   review it isn't waiting on you). Codex writes nothing while an approved command runs, so a long command
   you approved keeps showing "needs you" until it finishes. Without the hooks, a turn with no writes for 10 minutes stops counting

@@ -105,6 +105,14 @@ def question(t, title):
                                    'arguments': json.dumps({'questions': [{'title': title}]})})
 
 
+def tool_call(t, name, call_id='c1'):
+    return cx(t, 'response_item', {'type': 'function_call', 'name': name, 'call_id': call_id, 'arguments': '{}'})
+
+
+def tool_output(t, call_id='c1'):
+    return cx(t, 'response_item', {'type': 'function_call_output', 'call_id': call_id, 'output': 'ok'})
+
+
 def gh_pr_create(t, url, code=0):
     return cx(t, 'event_msg', {'type': 'item_completed', 'item': {
         'type': 'CommandExecution', 'command': ['/bin/zsh', '-lc', 'gh pr create --fill'],
@@ -177,6 +185,13 @@ def build(home, now, live_pid, headless_pid):
     codex('cx-approved', 'db migration', 'vscode', now - 25 * 60, now - 30, now - H,
           [user_message(now - 25 * 60), turn_context(now - 25 * 60, 'user'), turn_started(now - 25 * 60),
            agent_step(now - 30)], now - 30)
+    # a browser call that hasn't returned in 3 minutes: a prompt in Codex waits on you (Codex reports it nowhere)
+    codex('cx-browser', 'usage numbers', 'vscode', now - 10 * 60, now - 3 * 60, now - H,
+          [user_message(now - 10 * 60), turn_started(now - 10 * 60), tool_output(now - 4 * 60, 'c0'),
+           tool_call(now - 3 * 60, 'js')], now - 3 * 60)
+    # one started 20 s ago is just running
+    codex('cx-browsing', 'read docs', 'vscode', now - 5 * 60, now - 20, now - H,
+          [user_message(now - 5 * 60), turn_started(now - 5 * 60), tool_call(now - 20, 'js')], now - 20)
     # its rollout can't be read: reported in errors, the other threads still list
     broken = codex('cx-broken', 'broken rollout', 'vscode', now - 2 * H, now - 2 * H, now - 2 * H, [], now - 2 * H)
     os.remove(broken)

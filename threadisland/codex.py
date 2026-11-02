@@ -26,6 +26,9 @@ def codex_turn(turn, rollout, asked=None):
     return '', None
 
 
+BROWSER_WAIT = 60
+
+
 def codex_rows(procs, gtty, events):
     dbs = sorted(glob.glob(f'{core.HOME}/.codex/state_*.sqlite'),
                  key=lambda p: int(re.search(r'state_(\d+)', p).group(1)))
@@ -64,6 +67,12 @@ def codex_rows(procs, gtty, events):
             log = scan_log('codex', rollout) if rollout and os.path.exists(rollout) else {}
             src = 'codex' if source == 'vscode' else 'codex-cli'
             state, reply = codex_turn(log.get('turn'), rollout, log.get('asked')) if log else ('', None)
+            # a browser call that hasn't returned in a minute is a prompt waiting on you (allow a download, let
+            # Computer Use control an app, pick a file): Codex shows it as "Needs approval" but reports it to no
+            # hook and writes nothing meanwhile. 99% of browser calls return within 15 s.
+            call, started = log.get('call') or (None, None)
+            if state != 'needs you' and call == 'js' and started and core.NOW - started > BROWSER_WAIT:
+                state, reply = 'needs you', APPROVAL
             s = events.get(('codex', tid))
             # Codex writes nothing to the rollout while it waits for an approval, so a write since the request
             # means it was answered; with its automatic reviewer the request never waits on you
