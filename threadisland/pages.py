@@ -54,11 +54,17 @@ end run'''
 
 
 def front_app():
-    """(bundle id, name) of the app you're in; the island never takes that from it."""
-    info = run(['lsappinfo', 'info', '-only', 'bundleid', '-only', 'name', run(['lsappinfo', 'front']).strip()])
-    bundle = re.search(r'"CFBundleIdentifier"="([^"]*)"', info)
-    name = re.search(r'"LSDisplayName"="([^"]*)"', info)
-    return (bundle.group(1) if bundle else None), (name.group(1) if name else None)
+    """(bundle id, name) of the app you're in; the island never takes that from it. macOS can report a
+    windowless system agent as in front (WindowManager after a click on the desktop, the Dock): then the
+    frontmost regular app, from the visible apps listed front to back."""
+    visible = re.findall(r'ASN:0x[0-9a-f]+-0x[0-9a-f]+', run(['lsappinfo', 'visibleProcessList']))
+    for asn in [run(['lsappinfo', 'front']).strip()] + visible:
+        info = run(['lsappinfo', 'info', '-only', 'bundleid', '-only', 'name', '-only', 'ApplicationType', asn])
+        bundle = re.search(r'"CFBundleIdentifier"="([^"]*)"', info)
+        if bundle and '"ApplicationType"="Foreground"' in info:
+            name = re.search(r'"LSDisplayName"="([^"]*)"', info)
+            return bundle.group(1), (name.group(1) if name else None)
+    return None, None
 
 
 def capture_page():

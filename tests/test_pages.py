@@ -54,6 +54,36 @@ class Pages(unittest.TestCase):
         self.assertEqual(len(self.saved()['recent_pages']), pages.RECENT_PAGES)
 
 
+class FrontApp(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(setattr, pages, 'run', pages.run)
+
+    def apps(self, front, visible, info):
+        def run(cmd, **kw):
+            if cmd[1] == 'front':
+                return front + '\n'
+            if cmd[1] == 'visibleProcessList':
+                return ' '.join(f'{asn}-"x":' for asn in visible)
+            bundle, kind = info[cmd[-1]]
+            return f'"CFBundleIdentifier"="{bundle}"\n"LSDisplayName"="{bundle}"\n"ApplicationType"="{kind}"\n'
+        pages.run = run
+
+    def test_the_app_you_are_in(self):
+        self.apps('ASN:0x0-0x2', ['ASN:0x0-0x2'], {'ASN:0x0-0x2': ('com.example.chat', 'Foreground')})
+        self.assertEqual(pages.front_app(), ('com.example.chat', 'com.example.chat'))
+
+    def test_windowless_system_app_in_front_is_skipped(self):
+        # after a click on the desktop macOS can report WindowManager in front; saving it opened nothing
+        self.apps('ASN:0x0-0x1', ['ASN:0x0-0x2', 'ASN:0x0-0x3'],
+                  {'ASN:0x0-0x1': ('com.apple.WindowManager', 'UIElement'),
+                   'ASN:0x0-0x2': ('com.example.chat', 'Foreground'), 'ASN:0x0-0x3': ('com.example.mail', 'Foreground')})
+        self.assertEqual(pages.front_app()[0], 'com.example.chat')
+
+    def test_no_app(self):
+        self.apps('ASN:0x0-0x1', [], {'ASN:0x0-0x1': ('com.apple.dock', 'UIElement')})
+        self.assertEqual(pages.front_app(), (None, None))
+
+
 ICON = b'\x89PNG\r\n\x1a\n'
 
 
