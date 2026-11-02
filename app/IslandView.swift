@@ -14,8 +14,16 @@ struct IslandView: View {
     let onOpen: (Page) -> Void
     @FocusState private var naming: Bool
 
-    let design = Design.instrument
+    @AppStorage("appearance") var appearance = "System"
+    @Environment(\.colorScheme) var scheme
+    // the panel follows the theme; the strip at the notch stays black (with the dark colors) to merge with it
+    var design: Design {
+        appearance == "Light" || appearance == "System" && scheme == .light ? .instrumentLight : .instrument
+    }
     @State private var dragKey: String?
+    @State private var chipDrag: String?
+    @State private var chipOrder: [String]?
+    @State private var chipFrames: [String: CGRect] = [:]
     @State private var dragOrder: [String]?
     @State private var dragShift: CGFloat = 0
     @State private var dragMoved: CGFloat = 0
@@ -43,13 +51,16 @@ struct IslandView: View {
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
-        .background(.black)
+        .background(VStack(spacing: 0) { Color.black.frame(height: notch.height); design.background })
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius))
         .contextMenu { islandMenu }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder var islandMenu: some View {
+        Picker("Appearance", selection: $appearance) {
+            ForEach(["System", "Light", "Dark"], id: \.self) { Text($0).tag($0) }
+        }
         Button("Quit ThreadIsland") { NSApp.terminate(nil) }
     }
 
@@ -69,20 +80,55 @@ struct IslandView: View {
         .onChange(of: state.view) { _, view in if view != 1 { store.cancelDraft() } }
     }
 
-    // saved pages as chips on the threads view: one click from opening the island
+    // saved pages as chips on the threads view: one click from opening the island. They wrap onto more lines
+    // rather than scroll, since a sideways swipe switches views; drag one onto another's place to reorder.
     var chips: some View {
-        HStack(spacing: 6) {
-            ForEach(store.pages, id: \.key) { page in
-                PageChip(page: page, design: design, open: { onOpen(page) }, remove: { store.removePage(page) })
+        Wrap(spacing: 6, lineSpacing: 6) {
+            ForEach(chipPages, id: \.key) { page in
+                PageChip(page: page, design: design, dragging: chipDrag == page.key, open: { onOpen(page) })
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: ChipFrames.self, value: [page.key: g.frame(in: .named("chips"))])
+                    })
+                    .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named("chips"))
+                        .onChanged { dragChip(page.key, to: $0.location) }
+                        .onEnded { _ in dropChip() })
             }
             Image(systemName: "plus").font(.system(size: 10, weight: .semibold)).foregroundStyle(design.detail)
                 .frame(width: 24, height: 24).background(Circle().fill(design.text.opacity(0.06)))
                 .contentShape(Circle())
                 .onTapGesture { addPage() }
                 .help("Save where you are as a page")
-            Spacer(minLength: 0)
         }
+        .coordinateSpace(.named("chips"))
+        .onPreferenceChange(ChipFrames.self) { chipFrames = $0 }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16).padding(.bottom, 6)
+    }
+
+    var chipPages: [Page] {
+        guard let chipOrder else { return store.pages }
+        let rank = Dictionary(uniqueKeysWithValues: chipOrder.enumerated().map { ($1, $0) })
+        return store.pages.sorted { (rank[$0.key] ?? .max) < (rank[$1.key] ?? .max) }
+    }
+
+    func dragChip(_ key: String, to point: CGPoint) {
+        if chipDrag == nil {
+            chipDrag = key
+            chipOrder = store.pages.map(\.key)
+        }
+        guard var order = chipOrder, let from = order.firstIndex(of: key),
+              let over = chipFrames.first(where: { $0.key != key && $0.value.contains(point) })?.key,
+              let to = order.firstIndex(of: over) else { return }
+        order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { chipOrder = order }
+    }
+
+    func dropChip() {
+        if let chipOrder, chipOrder != store.pages.map(\.key) {
+            store.reorderPages(chipOrder)
+        }
+        chipDrag = nil
+        chipOrder = nil
     }
 
     func addPage() {
@@ -152,20 +198,20 @@ struct IslandView: View {
     @ViewBuilder var badgeWings: some View {
         HStack(spacing: 6) {
             if !store.errors.isEmpty {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundStyle(design.failed)
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundStyle(Design.instrument.failed)
             }
-            badge(store.needsYou, design.needsYou)
+            badge(store.needsYou, Design.instrument.needsYou)
         }
         .frame(maxWidth: .infinity)
         Spacer().frame(width: notch.width)
-        badge(store.working, design.working).frame(maxWidth: .infinity)
+        badge(store.working, Design.instrument.working).frame(maxWidth: .infinity)
     }
 
     func badge(_ n: Int, _ color: Color) -> some View {
         HStack(spacing: 4) {
             if n > 0 {
                 Circle().fill(color).frame(width: 7, height: 7)
-                Text("\(n)").font(design.small.weight(.semibold)).monospacedDigit().foregroundStyle(design.text)
+                Text("\(n)").font(design.small.weight(.semibold)).monospacedDigit().foregroundStyle(Design.instrument.text)
             }
         }
     }

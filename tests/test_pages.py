@@ -47,6 +47,12 @@ class Pages(unittest.TestCase):
         self.assertEqual([p['id'] for p in self.saved()['pages']], ['p2', 'p0'])
         self.assertEqual([p['id'] for p in self.saved()['recent_pages']], ['p1'])
 
+    def test_reorder(self):
+        for i in range(4):
+            self.add(id=f'p{i}', bundle='b', name=f'n{i}')
+        pages.pages_edit({'op': 'order', 'ids': ['p2', 'p0', 'gone', 7]})  # p1, p3 not in it: after, in their order
+        self.assertEqual([p['id'] for p in self.saved()['pages']], ['p2', 'p0', 'p1', 'p3'])
+
     def test_recently_removed_is_capped(self):
         for i in range(12):
             self.add(id=f'q{i}', bundle='b', name='x')

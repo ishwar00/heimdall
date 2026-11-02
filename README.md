@@ -29,10 +29,11 @@ Codex's own activity view orders them.
   you're there and press **+** (or swipe over to **Pages** and pick "Save where you are"), then name it.
   In Arc it saves the exact tab; in other apps, the app (and so its window and Space). Saved pages show
   as chips above your threads and as full rows in the Pages view; swipe left or right with two fingers
-  anywhere on the island to switch views. Hover a page for its remove button (or right-click it). Removed pages wait under Recently removed (the last 8), where hovering one shows a pin button to put it back. The first Arc page asks to let
+  anywhere on the island to switch views. The chips wrap onto more lines when there are many; drag one onto another's place to reorder them. To remove a page, hover it in the Pages view for its remove button (or right-click it). Removed pages wait under Recently removed (the last 8), where hovering one shows a pin button to put it back. The first Arc page asks to let
   ThreadIsland control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service). The fetch only goes to the page's own host or to public addresses, so a page can't point it at your machine or local network.
 - **Design:** one calm look: a lit lamp at the left edge of a row shows its state (orange needs you,
-  green working). Nothing moves unless you hover. Right-click the island to quit.
+  green working). Nothing moves unless you hover. Right-click the island for Appearance (System, Light or
+  Dark; the strip at the notch stays black so it merges with the notch) or to quit.
 - **Health:** each source reads files that an app update can change. If a source breaks, a red line in
   the panel (and a triangle on the pill) says which one, so the list never silently shrinks. One
   unreadable thread is reported and skipped; the rest of its source still shows. A click that fails to

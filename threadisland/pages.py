@@ -216,6 +216,9 @@ def pages_edit(e):
                     with contextlib.suppress(OSError):
                         os.remove(p['icon'])
             del recent[RECENT_PAGES:]
+        elif e['op'] == 'order':  # you dragged the chips; ids top to bottom, any page not in it keeps its place after
+            rank = {k: i for i, k in enumerate(e['ids']) if isinstance(k, str)}
+            state['pages'] = sorted(pages, key=lambda p: rank.get(p.get('id'), len(rank)))
         elif e['op'] == 'restore':
             recent = state.setdefault('recent_pages', [])
             pages.extend(p for p in recent if p.get('id') == e['id'] and all(q.get('id') != e['id'] for q in pages))

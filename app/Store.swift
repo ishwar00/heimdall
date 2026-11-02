@@ -98,6 +98,12 @@ final class Store: ObservableObject {
         editPages(["op": "restore", "id": page.id ?? ""])
     }
 
+    func reorderPages(_ keys: [String]) {
+        let rank = Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($1, $0) })
+        pages.sort { (rank[$0.key] ?? .max) < (rank[$1.key] ?? .max) }
+        editPages(["op": "order", "ids": keys])
+    }
+
     private func editPages(_ edit: [String: Any]) {
         guard let payload = try? JSONSerialization.data(withJSONObject: edit) else { return }
         DispatchQueue.global(qos: .userInitiated).async {

@@ -35,7 +35,8 @@ struct PageRow: View {
 struct PageChip: View {
     let page: Page
     let design: Design
-    let open: () -> Void, remove: () -> Void
+    let dragging: Bool
+    let open: () -> Void
     @State private var hover = false
 
     var body: some View {
@@ -45,22 +46,10 @@ struct PageChip: View {
                 .frame(maxWidth: 110, alignment: .leading).fixedSize()
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(Capsule().fill(design.text.opacity(hover ? 0.14 : 0.08)))
+        .background(Capsule().fill(design.text.opacity(dragging ? 0.2 : hover ? 0.14 : 0.08)))
         .contentShape(Capsule())
         .onTapGesture { open() }
-        .contextMenu { Button("Remove Page") { remove() } }
-        // remove sits on the corner, so showing it doesn't shift the chips
-        .overlay(alignment: .topTrailing) {
-            Image(systemName: "xmark").font(.system(size: 7, weight: .bold)).foregroundStyle(design.text)
-                .frame(width: 14, height: 14).background(Circle().fill(Color(white: 0.25)))
-                .offset(x: 4, y: -4)
-                .opacity(hover ? 1 : 0)
-                .onTapGesture { remove() }
-                .help("Remove")
-        }
-        .padding(4).contentShape(Rectangle())  // the hover area covers the corner badge, so it stays to be clicked
         .onHover { hover = $0 }
-        .padding(-4)
     }
 }
 
@@ -86,7 +75,7 @@ struct RowView: View {
         appIcon(row, size: 24).overlay(alignment: .bottomTrailing) {
             if inTerminal {
                 Image(systemName: "terminal.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(design.text)
-                    .padding(2).background(Circle().fill(.black)).offset(x: 4, y: 4)
+                    .padding(2).background(Circle().fill(design.background)).offset(x: 4, y: 4)
             }
         }
     }
@@ -138,8 +127,53 @@ struct RowView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 10).fill(design.text.opacity(dragging ? 0.14 : hover ? 0.08 : 0)))
-        .background(RoundedRectangle(cornerRadius: 10).fill(dragging ? Color.black : .clear))  // covers rows it passes
+        .background(RoundedRectangle(cornerRadius: 10).fill(dragging ? design.background : .clear))  // covers rows it passes
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+    }
+}
+
+struct ChipFrames: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+// Lays its views out left to right, starting a new line when the next one doesn't fit
+struct Wrap: Layout {
+    var spacing: CGFloat, lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = lines(subviews, width)
+        let height = rows.map { $0.height }.reduce(0, +) + lineSpacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: proposal.width ?? rows.map { $0.width }.max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in lines(subviews, bounds.width) {
+            var x = bounds.minX
+            for i in line.items {
+                let size = subviews[i].sizeThatFits(.unspecified)
+                subviews[i].place(at: CGPoint(x: x, y: y + (line.height - size.height) / 2), proposal: .unspecified)
+                x += size.width + spacing
+            }
+            y += line.height + lineSpacing
+        }
+    }
+
+    private func lines(_ subviews: Subviews, _ width: CGFloat) -> [(items: [Int], width: CGFloat, height: CGFloat)] {
+        var out: [(items: [Int], width: CGFloat, height: CGFloat)] = []
+        for (i, view) in subviews.enumerated() {
+            let size = view.sizeThatFits(.unspecified)
+            if let last = out.last, last.width + spacing + size.width <= width {
+                out[out.count - 1] = (last.items + [i], last.width + spacing + size.width, max(last.height, size.height))
+            } else {
+                out.append(([i], size.width, size.height))
+            }
+        }
+        return out
     }
 }
