@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 
 from . import core
-from .core import run, checked
+from .core import run, checked, log_jump
 from .state import edited_state
 
 
@@ -24,30 +24,43 @@ tell application "Arc" to tell front window
     return (id of active tab) & d & (title of active tab) & d & (URL of active tab) & d & (id of active space) & d & (title of active space)
 end tell'''
 ARC_SELECT = '''on run argv
+    set {tid, sid, u} to {item 1 of argv, item 2 of argv, item 3 of argv}
     tell application "Arc"
         activate
-        tell front window
-            try
-                tell (first space whose id is (item 2 of argv)) to focus
-            end try
-            try
-                tell (first tab whose id is (item 1 of argv)) to select
-                return "ok"
-            end try
-            repeat with s in spaces
-                try
-                    tell (first tab of s whose id is (item 1 of argv)) to select
-                    return "ok"
-                end try
+        repeat 50 times -- a just-launched Arc restores its windows a moment later
+            if (count of windows) > 0 then exit repeat
+            delay 0.1
+        end repeat
+        -- every window, front first: the tab may not be in the front one. By id, else by URL: Arc can give
+        -- a tab a new id (after a restart) and the same page still open counts. (Arc has no `exists`, and a
+        -- tab kept in a variable stops resolving, so tabs are counted and addressed inline.)
+        repeat with pass from 1 to 2
+            repeat with i from 1 to count of windows
+                tell window i
+                    if pass is 1 then
+                        set n to count of (tabs whose id is tid)
+                    else if u is "" then
+                        set n to 0
+                    else
+                        set n to count of (tabs whose URL is u)
+                    end if
+                    if n > 0 then
+                        try
+                            tell (first space whose id is sid) to focus
+                        end try
+                        if pass is 1 then
+                            tell (first tab whose id is tid) to select
+                        else
+                            tell (first tab whose URL is u) to select
+                        end if
+                        try -- Arc refuses this today (-10000); a tab in a back window is then selected behind
+                            set index to 1 -- last: raising it renumbers the windows
+                        end try
+                        return "ok"
+                    end if
+                end tell
             end repeat
-            -- Arc can give a tab a new id (after a restart); the same page still open counts
-            repeat with s in spaces
-                try
-                    tell (first tab of s whose URL is (item 3 of argv)) to select
-                    return "ok"
-                end try
-            end repeat
-        end tell
+        end repeat
     end tell
     return "missing"
 end run'''
@@ -93,9 +106,12 @@ def open_page(page):
     if page.get('tab'):
         p = subprocess.run(['osascript', '-', page['tab'], page.get('space') or '', page.get('url') or ''], input=ARC_SELECT,
                            capture_output=True, text=True, timeout=30)
-        if p.stdout.strip() == 'ok':
+        found = p.stdout.strip()
+        log_jump('page', page.get('name'), found or p.stderr.strip())
+        if found == 'ok':
             return None
-        if page.get('url'):  # closed since: open it again
+        # reopen only when no window has it: a failed lookup (Arc busy or still starting) isn't a closed tab
+        if found == 'missing' and page.get('url'):
             return checked(['open', '-b', ARC, page['url']])
         return p.stderr.strip() or 'tab not found'
     return checked(['open', '-b', page['bundle']])

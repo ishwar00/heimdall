@@ -2,12 +2,13 @@
 import http.server
 import json
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
 import urllib.request
 
-from threadisland import pages, state
+from threadisland import core, pages, state
 
 
 class Pages(unittest.TestCase):
@@ -88,6 +89,41 @@ class FrontApp(unittest.TestCase):
     def test_no_app(self):
         self.apps('ASN:0x0-0x1', [], {'ASN:0x0-0x1': ('com.apple.dock', 'UIElement')})
         self.assertEqual(pages.front_app(), (None, None))
+
+
+class OpenPage(unittest.TestCase):
+    """A saved Arc tab is reopened only when Arc says no window has it, never because the lookup failed."""
+    PAGE = {'tab': 'T1', 'space': 'S1', 'url': 'https://mail.example.com/', 'bundle': pages.ARC, 'name': 'Mail'}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.opened = []
+        for module, name, value in ((core, 'JUMPS', os.path.join(tmp.name, 'jumps.log')),
+                                    (pages, 'checked', lambda cmd: self.opened.append(cmd))):
+            self.addCleanup(setattr, module, name, getattr(module, name))
+            setattr(module, name, value)
+
+    def arc(self, stdout, stderr=''):
+        self.addCleanup(setattr, pages.subprocess, 'run', pages.subprocess.run)
+        pages.subprocess.run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0 if stdout else 1, stdout, stderr)
+        return pages.open_page(self.PAGE)
+
+    def test_open_tab_is_selected(self):
+        self.assertIsNone(self.arc('ok\n'))
+        self.assertEqual(self.opened, [])
+
+    def test_closed_tab_is_opened_again(self):
+        self.arc('missing\n')
+        self.assertEqual(self.opened, [['open', '-b', pages.ARC, self.PAGE['url']]])
+
+    def test_failed_lookup_opens_nothing(self):
+        # Arc busy, or still restoring its windows after a launch: the tab may well be open
+        self.assertEqual(self.arc('', 'Arc got an error: AppleEvent timed out. (-1712)'),
+                         'Arc got an error: AppleEvent timed out. (-1712)')
+        self.assertEqual(self.opened, [])
+        with open(core.JUMPS) as fh:
+            self.assertIn('AppleEvent timed out', fh.read())
 
 
 ICON = b'\x89PNG\r\n\x1a\n'

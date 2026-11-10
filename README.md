@@ -90,6 +90,10 @@ It adds one hook command to `~/.claude/settings.json` and `~/.codex/hooks.json`,
 opens one row. The Swift app is only the UI: a borderless panel at the notch that runs `threads` every
 32 s (every 4 s while open, and right away when you open it). It never pops up on its own: you look when you want to.
 
+A click on a thread that isn't open anywhere checks again before opening a new terminal, so one you
+opened since the last refresh is focused instead. Each click is logged, with what it did and why, to
+`~/Library/Application Support/ThreadIsland/jumps.log` (about 64 KB, then rotated).
+
 Run `threads` yourself to see the raw data.
 
 | Path | What's there |
@@ -125,3 +129,7 @@ the diff of `tests/golden.json`. Fixtures are synthetic on purpose: real transcr
   you approved keeps showing "needs you" until it finishes. Without the hooks, a turn with no writes for 10 minutes stops counting
   as working.
 - Live sessions in terminals other than Ghostty and Warp show in the list but can't be jumped to.
+- Background jobs are focused where a `claude attach` runs. Nothing on disk records which job an agent-view
+  window (`claude` with no arguments) is showing, so a job open only there gets a new `claude attach` tab.
+- A saved Arc tab is looked for in every Arc window, but Arc can't be told to raise a window, so a tab in a
+  window behind the front one is selected there without coming forward.

@@ -76,3 +76,17 @@ def checked(cmd, stdin=None):
     """Run a jump command; None on success, else what went wrong (shown in the panel)."""
     p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=30)
     return None if p.returncode == 0 else (p.stderr.strip() or f'{cmd[0]} exited with {p.returncode}')
+
+
+JUMPS = f'{HOME}/Library/Application Support/ThreadIsland/jumps.log'
+
+
+def log_jump(kind, what, outcome):
+    """One line per click, so a jump that opened the wrong thing says why afterwards; kept to about 64 KB."""
+    try:
+        if os.path.exists(JUMPS) and os.path.getsize(JUMPS) > 64 * 1024:
+            os.replace(JUMPS, JUMPS + '.1')
+        with open(JUMPS, 'a') as fh:
+            fh.write(f'{datetime.datetime.now().isoformat(timespec="seconds")}\t{kind}\t{what}\t{outcome}\n')
+    except OSError:
+        pass
