@@ -1,7 +1,7 @@
 # Heimdall
 
-A Dynamic Island for your coding agents. Heimdall sits in the MacBook notch and lists your
-**Codex** and **Claude Code** threads in one place. Click one to jump straight to it.
+A Dynamic Island for everything you switch between. Heimdall sits in the MacBook notch and lists your
+**Codex** and **Claude Code** threads, plus any Arc tab or app you save. Click one to jump straight to it.
 
 [![Heimdall demo (30 s)](media/poster.jpg)](media/heimdall.mp4)
 
