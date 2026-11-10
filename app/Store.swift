@@ -21,7 +21,7 @@ final class Store: ObservableObject {
             DispatchQueue.main.async {
                 self.loading = false
                 guard let payload else {
-                    self.sourceErrors = ["threads script: no readable output (\(data.count) bytes)"]
+                    self.sourceErrors = ["heimdall script: no readable output (\(data.count) bytes)"]
                     return
                 }
                 self.rows = payload.rows
@@ -38,7 +38,7 @@ final class Store: ObservableObject {
             let data = runThreads(["--jump"], input: payload)
             let result = try? JSONDecoder().decode(JumpResult.self, from: data)
             DispatchQueue.main.async {
-                self.jumpError = result == nil ? "threads script: no readable output (\(data.count) bytes)" : result?.error
+                self.jumpError = result == nil ? "heimdall script: no readable output (\(data.count) bytes)" : result?.error
             }
         }
     }
@@ -118,7 +118,7 @@ final class Store: ObservableObject {
             let data = runThreads(["--page-open"], input: payload)
             let result = try? JSONDecoder().decode(JumpResult.self, from: data)
             DispatchQueue.main.async {
-                self.jumpError = result == nil ? "threads script: no readable output (\(data.count) bytes)" : result?.error
+                self.jumpError = result == nil ? "heimdall script: no readable output (\(data.count) bytes)" : result?.error
             }
         }
     }

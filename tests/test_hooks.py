@@ -1,4 +1,4 @@
-"""hooks/ti-event and hooks/install, run as the agents and you would run them, against a temporary home folder."""
+"""hooks/heimdall-event and hooks/install, run as the agents and you would run them, against a temporary home folder."""
 import json
 import os
 import subprocess
@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOOK = os.path.join(ROOT, 'hooks', 'ti-event')
+HOOK = os.path.join(ROOT, 'hooks', 'heimdall-event')
 INSTALL = os.path.join(ROOT, 'hooks', 'install')
 
 
@@ -25,7 +25,7 @@ class Hooks(unittest.TestCase):
                                                 'notification_type': 'permission_prompt', 'prompt': 'private words',
                                                 'last_assistant_message': 'private reply'}))
         self.assertEqual((p.returncode, p.stdout, p.stderr), (0, '', ''))  # Claude adds a hook's output to the chat
-        with open(f'{self.home}/Library/Application Support/ThreadIsland/events.jsonl') as fh:
+        with open(f'{self.home}/Library/Application Support/Heimdall/events.jsonl') as fh:
             rec = json.loads(fh.read())
         self.assertEqual({k: v for k, v in rec.items() if k != 't'},
                          {'tool': 'claude', 'event': 'Notification', 'session': 's1', 'turn': 't1', 'type': 'permission_prompt'})
@@ -59,7 +59,7 @@ class Hooks(unittest.TestCase):
         self.install('--remove')
         self.assertEqual(self.read('.claude/settings.json'), mine)
         self.assertFalse(os.path.exists(f'{self.home}/.codex/hooks.json'))  # install made it; nothing else was in it
-        self.assertEqual(self.read('.claude/settings.json.threadisland-backup'), mine)
+        self.assertEqual(self.read('.claude/settings.json.heimdall-backup'), mine)
 
 
 if __name__ == '__main__':

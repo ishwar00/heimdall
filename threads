@@ -1,5 +1,0 @@
-#!/usr/bin/env python3
-"""threads: every Codex and Claude Code thread as JSON for the ThreadIsland notch app (see threadisland/)."""
-from threadisland.cli import main
-
-main()

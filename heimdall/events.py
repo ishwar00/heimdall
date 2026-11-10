@@ -1,4 +1,4 @@
-"""What the agents' own hooks reported (hooks/ti-event): which turns are running and which wait on your approval.
+"""What the agents' own hooks reported (hooks/heimdall-event): which turns are running and which wait on your approval.
 
 The hooks add what the logs can't show: a Codex turn waiting for you to approve a command, a Claude permission
 prompt, a turn that runs a long command without writing anything. Threads with no hook events (before the
@@ -8,7 +8,7 @@ import os
 
 from . import core
 
-EVENTS = f'{core.HOME}/Library/Application Support/ThreadIsland/events.jsonl'
+EVENTS = f'{core.HOME}/Library/Application Support/Heimdall/events.jsonl'
 ROTATE_AT = 512 * 1024  # then it moves to events.jsonl.1, replacing the previous one; only recent events matter
 # an unfinished turn counts as running this long after its last event; one that died without a Stop then clears
 OPEN_FOR = 30 * 60

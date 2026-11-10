@@ -87,7 +87,7 @@ def capture_page():
         return {'error': 'no app in front'}
     page = {'bundle': bundle, 'app': name, 'name': name}
     if bundle == ARC:
-        # the first time, macOS asks whether ThreadIsland may control Arc: leave time to answer
+        # the first time, macOS asks whether Heimdall may control Arc: leave time to answer
         try:
             p = subprocess.run(['osascript', '-e', ARC_CAPTURE], capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
@@ -96,7 +96,7 @@ def capture_page():
         if p.returncode != 0 or len(parts) != 5:
             # saving plain Arc instead would look like a saved tab and only ever open Arc
             return {'error': 'couldn\'t read the Arc tab: ' + (p.stderr.strip() or 'no tab open')
-                    + ('. Allow ThreadIsland in System Settings > Privacy & Security > Automation' if '-1743' in p.stderr else '')}
+                    + ('. Allow Heimdall in System Settings > Privacy & Security > Automation' if '-1743' in p.stderr else '')}
         tab, title, url, space, space_title = parts
         page.update(tab=tab, url=url, space=space, name=title or name, detail=f'{space_title} space')
     return page
@@ -117,7 +117,7 @@ def open_page(page):
     return checked(['open', '-b', page['bundle']])
 
 
-FAVICONS = f'{core.HOME}/Library/Caches/ThreadIsland/favicons'
+FAVICONS = f'{core.HOME}/Library/Caches/Heimdall/favicons'
 RECENT_PAGES = 8
 
 
@@ -127,7 +127,7 @@ def favicon(url, key):
     None if there isn't one; the page then shows the browser's icon."""
     if not url.startswith(('http://', 'https://')):
         return None
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh) ThreadIsland'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh) Heimdall'}
     origin = urllib.parse.urlsplit(url)[:2]  # scheme and host:port of the page you saved
 
     def own(u):

@@ -7,7 +7,7 @@ from . import core
 from .core import run, loads, epoch, read_json
 
 
-PR_CACHE = f'{core.HOME}/Library/Caches/ThreadIsland/prs.json'
+PR_CACHE = f'{core.HOME}/Library/Caches/Heimdall/prs.json'
 PR_URL = re.compile(r'https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)')
 PR_TTL = 300  # PR status is fetched at most every 5 min, in one call for all of them
 

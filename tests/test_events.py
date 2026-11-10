@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from fixtures import hook
-from threadisland import core, events
+from heimdall import core, events
 
 NOW = core.NOW
 

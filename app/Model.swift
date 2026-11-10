@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-let threadsScript = NSString(string: "~/.local/bin/threads").expandingTildeInPath
+let threadsScript = NSString(string: "~/.local/bin/heimdall").expandingTildeInPath
 
 struct Row: Codable, Identifiable {
     let key: String, ts: Double, src: String, state: String, title: String, detail: String?

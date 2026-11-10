@@ -1,4 +1,4 @@
-"""ThreadIsland's saved state: Priority's order, pages and recently removed pages."""
+"""Heimdall's saved state: Priority's order, pages and recently removed pages."""
 import contextlib
 import fcntl
 import json
@@ -8,7 +8,7 @@ from . import core
 from .core import read_json
 
 
-STATE = f'{core.HOME}/Library/Application Support/ThreadIsland/state.json'
+STATE = f'{core.HOME}/Library/Application Support/Heimdall/state.json'
 
 
 @contextlib.contextmanager

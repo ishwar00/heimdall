@@ -9,8 +9,8 @@ import time
 
 HOME = os.path.expanduser('~')
 WINDOW_DAYS = 7
-# THREADISLAND_NOW pins the clock for tests (tests/test_golden.py); unset in normal use
-NOW = float(os.environ.get('THREADISLAND_NOW') or time.time())
+# HEIMDALL_NOW pins the clock for tests (tests/test_golden.py); unset in normal use
+NOW = float(os.environ.get('HEIMDALL_NOW') or time.time())
 TODAY = datetime.date.fromtimestamp(NOW)
 # Same window as Codex's activity view: today plus the previous 6 local days
 CUTOFF = time.mktime((TODAY - datetime.timedelta(days=WINDOW_DAYS - 1)).timetuple())
@@ -78,7 +78,7 @@ def checked(cmd, stdin=None):
     return None if p.returncode == 0 else (p.stderr.strip() or f'{cmd[0]} exited with {p.returncode}')
 
 
-JUMPS = f'{HOME}/Library/Application Support/ThreadIsland/jumps.log'
+JUMPS = f'{HOME}/Library/Application Support/Heimdall/jumps.log'
 
 
 def log_jump(kind, what, outcome):

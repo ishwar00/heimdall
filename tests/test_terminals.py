@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from threadisland import cli, core, terminals
+from heimdall import cli, core, terminals
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -34,7 +34,7 @@ class Terminals(unittest.TestCase):
                 fh.write("#!/bin/sh\necho 'no app for that link' >&2\nexit 1\n")
             os.chmod(f'{bin_dir}/open', 0o755)
             row = {'action': 'url', 'arg': 'example://x', 'key': 'k', 'cwd': ''}
-            p = subprocess.run([sys.executable, '-B', os.path.join(ROOT, 'threads'), '--jump'], input=json.dumps(row),
+            p = subprocess.run([sys.executable, '-B', os.path.join(ROOT, 'bin', 'heimdall'), '--jump'], input=json.dumps(row),
                                env={'PATH': f'{bin_dir}:/usr/bin:/bin', 'HOME': bin_dir},
                                capture_output=True, text=True, timeout=30)
         self.assertEqual(json.loads(p.stdout)['error'], 'no app for that link')
@@ -48,7 +48,7 @@ class JumpRecheck(unittest.TestCase):
         self.jumped = []
         for module, name, value in ((core, 'JUMPS', os.path.join(tmp.name, 'jumps.log')),
                                     (cli, 'jump', lambda row: self.jumped.append(row)),
-                                    (sys, 'argv', ['threads', '--jump']), (sys, 'stdout', io.StringIO())):
+                                    (sys, 'argv', ['heimdall', '--jump']), (sys, 'stdout', io.StringIO())):
             self.addCleanup(setattr, module, name, getattr(module, name))
             setattr(module, name, value)
 

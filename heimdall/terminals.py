@@ -76,12 +76,12 @@ def warp_open(cwd, command, key):
     thread, written atomically, so two quick clicks can't open the same thread twice."""
     folder = f'{core.HOME}/.warp/tab_configs'
     os.makedirs(folder, exist_ok=True)
-    for old in glob.glob(f'{folder}/threadisland*.toml'):  # they show in Warp's + menu; keep a day's worth
+    for old in glob.glob(f'{folder}/heimdall*.toml'):  # they show in Warp's + menu; keep a day's worth
         if core.NOW - os.path.getmtime(old) > 86400:
             os.remove(old)
-    name = 'threadisland-' + re.sub(r'[^A-Za-z0-9-]', '', key)[:40]
+    name = 'heimdall-' + re.sub(r'[^A-Za-z0-9-]', '', key)[:40]
     with open(f'{folder}/.{name}.tmp', 'w') as fh:
-        fh.write(f'name = "ThreadIsland"\n\n[[panes]]\nid = "main"\ntype = "terminal"\n'
+        fh.write(f'name = "Heimdall"\n\n[[panes]]\nid = "main"\ntype = "terminal"\n'
                  f'directory = {toml_str(cwd)}\ncommands = [{toml_str(command)}]\n')
     os.replace(f'{folder}/.{name}.tmp', f'{folder}/{name}.toml')
     return checked(['open', f'warp://tab_config/{name}'])

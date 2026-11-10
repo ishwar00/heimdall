@@ -1,4 +1,4 @@
-"""threads: Codex + Claude Code threads, recency-sorted, as JSON for the ThreadIsland notch app.
+"""threads: Codex + Claude Code threads, recency-sorted, as JSON for the Heimdall notch app.
 
 Sources: Codex desktop/CLI (~/.codex/state_*.sqlite), Claude desktop Code tab
 (claude-code-sessions/*.json), Claude CLI background jobs (~/.claude/jobs) and

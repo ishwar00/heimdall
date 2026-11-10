@@ -6,8 +6,8 @@ import unittest
 from fixtures import (H, agent_step, ai_title, big_output, custom_title, exit_command, human, question, reply,
                       settings_sync, system_notice, tool_call, tool_definitions, tool_output, tool_result,
                       turn_complete, turn_started, user_message)
-from threadisland import core, logs
-from threadisland.codex import codex_turn
+from heimdall import core, logs
+from heimdall.codex import codex_turn
 
 NOW = core.NOW
 

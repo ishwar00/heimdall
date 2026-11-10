@@ -61,7 +61,7 @@ struct IslandView: View {
         Picker("Appearance", selection: $appearance) {
             ForEach(["System", "Light", "Dark"], id: \.self) { Text($0).tag($0) }
         }
-        Button("Quit ThreadIsland") { NSApp.terminate(nil) }
+        Button("Quit Heimdall") { NSApp.terminate(nil) }
     }
 
     var switcher: some View {

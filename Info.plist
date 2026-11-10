@@ -2,13 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key><string>local.threadisland</string>
-    <key>CFBundleName</key><string>ThreadIsland</string>
-    <key>CFBundleExecutable</key><string>ThreadIsland</string>
+    <key>CFBundleIdentifier</key><string>local.heimdall</string>
+    <key>CFBundleName</key><string>Heimdall</string>
+    <key>CFBundleExecutable</key><string>Heimdall</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
-    <key>NSAppleEventsUsageDescription</key><string>ThreadIsland focuses or opens Ghostty tabs for the thread you click.</string>
+    <key>NSAppleEventsUsageDescription</key><string>Heimdall focuses or opens Ghostty tabs for the thread you click.</string>
 </dict>
 </plist>

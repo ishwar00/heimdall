@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from fixtures import gh_pr_create, jline, mcp_pr_create, pr_created, reply
-from threadisland import prs
+from heimdall import prs
 
 U = 'https://github.com/acme/app/pull/'
 

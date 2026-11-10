@@ -1,7 +1,7 @@
 #!/usr/bin/python3
-"""Adds ThreadIsland's hook (ti-event) to Claude Code (~/.claude/settings.json) and Codex (~/.codex/hooks.json);
+"""Adds Heimdall's hook (heimdall-event) to Claude Code (~/.claude/settings.json) and Codex (~/.codex/hooks.json);
 `install --remove` takes it out again. Your other hooks and settings are kept; running it twice adds nothing.
-The first run keeps a copy of each file next to it as <file>.threadisland-backup.
+The first run keeps a copy of each file next to it as <file>.heimdall-backup.
 
 Hook formats: https://code.claude.com/docs/en/hooks and https://developers.openai.com/codex/hooks
 Codex asks once ("Review hooks") before it runs a new user-level hook: allow it there."""
@@ -11,7 +11,7 @@ import shlex
 import shutil
 import sys
 
-HOOK = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ti-event')
+HOOK = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'heimdall-event')
 # per turn only, nothing per tool call: the hook starts Python each time
 EVENTS = {'claude': ['UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd'],
           'codex': ['UserPromptSubmit', 'PermissionRequest', 'Stop', 'Interrupt', 'SessionEnd']}
@@ -32,8 +32,8 @@ def update(tool, add):
     hooks = config.setdefault('hooks', {})
     installed = any(ours(h) for groups in hooks.values() for g in groups for h in g.get('hooks', []))
     # your own file, as it was before the first install (one that has our hook in it was written here)
-    if os.path.exists(path) and not installed and not os.path.exists(path + '.threadisland-backup'):
-        shutil.copy2(path, path + '.threadisland-backup')
+    if os.path.exists(path) and not installed and not os.path.exists(path + '.heimdall-backup'):
+        shutil.copy2(path, path + '.heimdall-backup')
     for event in list(hooks):  # drop ours, keep everything else
         groups = []
         for group in hooks[event]:
@@ -50,7 +50,7 @@ def update(tool, add):
             hooks.setdefault(event, []).append({'hooks': [{'type': 'command', 'command': command, 'timeout': 5}]})
     if not hooks:
         del config['hooks']
-    if not config and not add and not os.path.exists(path + '.threadisland-backup'):
+    if not config and not add and not os.path.exists(path + '.heimdall-backup'):
         os.remove(path)  # install created it and nothing else is in it
         print(f'removed {FILES[tool]}')
         return

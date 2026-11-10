@@ -73,7 +73,7 @@ def turn_context(t, reviewer):
 
 
 def hook(t, tool, event, session, kind=None):
-    """A line hooks/ti-event writes."""
+    """A line hooks/heimdall-event writes."""
     rec = {'t': t, 'tool': tool, 'event': event, 'session': session}
     if kind:
         rec['type'] = kind
@@ -126,7 +126,7 @@ PR_MERGED = 'https://github.com/acme/app/pull/303'
 
 def build(home, now, live_pid, headless_pid):
     """Write the fake home. live_pid and headless_pid are running processes (the test's own) that stand in for
-    a Claude CLI session in a terminal and a headless `claude -p`. `threads` runs ps, osascript, lsof, pgrep
+    a Claude CLI session in a terminal and a headless `claude -p`. `heimdall` runs ps, osascript, lsof, pgrep
     and lsappinfo by name; stubs in {home}/bin, first on PATH, keep it off the real machine."""
     os.makedirs(f'{home}/bin')
     for name, out in (('ps', f'{live_pid} 1 ttys001 claude\\n{headless_pid} 1 ?? claude -p\\n'),
@@ -260,7 +260,7 @@ def build(home, now, live_pid, headless_pid):
                        'latestUserFrameAt': int((now - H) * 1000)})], now - H)
 
     # ---------------- what the hooks reported
-    write(f'{home}/Library/Application Support/ThreadIsland/events.jsonl', [
+    write(f'{home}/Library/Application Support/Heimdall/events.jsonl', [
         hook(now - 20 * 60, 'codex', 'UserPromptSubmit', 'cx-approval'),
         hook(now - 5 * 60, 'codex', 'PermissionRequest', 'cx-approval'),
         hook(now - 30 * 60, 'codex', 'UserPromptSubmit', 'cx-autoreview'),
@@ -279,15 +279,15 @@ def build(home, now, live_pid, headless_pid):
         'not json',
     ], now - 120)
 
-    # ---------------- ThreadIsland's own state: a dragged Priority order, saved pages
-    write(f'{home}/Library/Application Support/ThreadIsland/state.json',
+    # ---------------- Heimdall's own state: a dragged Priority order, saved pages
+    write(f'{home}/Library/Application Support/Heimdall/state.json',
           [json.dumps({'order': ['job-live', 'cx-working'],
                        'pages': [{'id': 'p1', 'bundle': 'company.thebrowser.Browser', 'app': 'Arc', 'name': 'Inbox',
                                   'tab': 'T1', 'url': 'https://mail.example.com/', 'space': 'S1', 'detail': 'work space'}],
                        'recent_pages': [{'id': 'p0', 'bundle': 'com.apple.ActivityMonitor', 'app': 'Activity Monitor',
                                          'name': 'Activity Monitor'}]})], now - H)
     # PR status as GitHub last reported it, fetched just now (no network in tests)
-    write(f'{home}/Library/Caches/ThreadIsland/prs.json',
+    write(f'{home}/Library/Caches/Heimdall/prs.json',
           [json.dumps({'fetched': now, 'logs': {}, 'status': {
               PR_CLAUDE: {'state': 'OPEN', 'draft': False, 'review': None, 'checks': 'SUCCESS', 'created': now - 3.5 * H},
               PR_CODEX: {'state': 'OPEN', 'draft': True, 'review': None, 'checks': None, 'created': now - 25 * H},

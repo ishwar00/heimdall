@@ -1,4 +1,4 @@
-"""Entry point: `threads` lists every thread as JSON; flags run one action (jump, edit, pages)."""
+"""Entry point: `heimdall` lists every thread as JSON; flags run one action (jump, edit, pages)."""
 import json
 import sys
 

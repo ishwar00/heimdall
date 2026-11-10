@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 
-from threadisland import core, sections, state
+from heimdall import core, sections, state
 
 NOW = core.NOW
 

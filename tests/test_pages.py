@@ -8,7 +8,7 @@ import threading
 import unittest
 import urllib.request
 
-from threadisland import core, pages, state
+from heimdall import core, pages, state
 
 
 class Pages(unittest.TestCase):
