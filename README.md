@@ -1,62 +1,26 @@
 # Heimdall
 
-A Dynamic Island for your coding agents. Heimdall sits in the MacBook notch and lists your recent
-**Codex** and **Claude Code** threads in one place. Hover to see them, click one to jump straight to it.
+A Dynamic Island for your coding agents. Heimdall sits in the MacBook notch and lists your
+**Codex** and **Claude Code** threads in one place. Click one to jump straight to it.
 
-If you switch between Codex and Claude Code all day, you know the problem: the thread you want is in
-one of four apps or a dozen terminal tabs. Heimdall puts all of them in one list, ordered the way
-Codex's own activity view orders them.
+[![Heimdall demo (30 s)](media/poster.jpg)](media/heimdall.mp4)
 
-## What you see
+## What it does
 
-- **Collapsed:** a black pill around the notch. The left side counts threads that need you,
-  the right side counts threads that are working.
-- **Expanded (hover):** a **Priority** section first, then **Today**, **Yesterday** and one section per
-  weekday for the last 7 days. Rows never swap places, so positions stay where you learned them:
-  - **Priority** holds threads with conversation activity (yours or the agent's) in the last 2 hours.
-    A thread that becomes active, new or old, joins at the bottom; after 2 hours with no activity,
-    whatever its state, it drops into its day. Bookkeeping the apps write into idle threads and Codex's
-    scheduled automation turns don't count as activity.
-  - **Rearrange:** hover a Priority row and drag its six-dot grip (right edge) to move it. Your order is kept in
-    `~/Library/Application Support/Heimdall/state.json`; threads that join still go to the bottom.
-  - **Open PRs** holds idle threads that created a PR that's still open, oldest PR first, with its number
-    and status (draft, checks failing, changes requested, approved, in review). A thread leaves when its
-    PRs are merged or closed. Only PRs the thread created count, not ones it mentions or reviews.
-  - **Day sections** sort by when you last sent a message.
+- **Threads.** Hover the notch to see every thread from the last 7 days, in sections that never reshuffle.
+  An orange lamp means it needs you, green means it's working. The collapsed pill counts both.
+  - **Priority:** threads active in the last 2 hours. Drag the grip on the right to reorder them.
+  - **Open PRs:** idle threads whose PR is still open, with its status.
+  - **Today, Yesterday, weekdays:** the rest, by when you last sent a message.
+- **Jump.** Click a thread to go to it: the Codex or Claude app, or the exact Ghostty window or Warp tab
+  it's running in. If it isn't open anywhere, it resumes in a new terminal session.
+- **Pages.** Press **+** to save where you are: the exact Arc tab, or any other app. Saved pages
+  show as chips above your threads, one click away. Swipe with two fingers to switch to the Pages view
+  to reorder or remove them.
+- **Health.** If an app update breaks a source, a red line says which one, so the list never shrinks
+  silently.
 
-  Each row starts with the app icon, so you can scan for "the Codex one", and shows its age.
-- **Pages:** save any place you keep coming back to and jump back with one click. Open the island while
-  you're there and press **+** (or swipe over to **Pages** and pick "Save where you are"), then name it.
-  In Arc it saves the exact tab; in other apps, the app (and so its window and Space). Saved pages show
-  as chips above your threads and as full rows in the Pages view; swipe left or right with two fingers
-  anywhere on the island to switch views. The chips wrap onto more lines when there are many; drag one onto another's place to reorder them. To remove a page, hover it in the Pages view for its remove button (or right-click it). Removed pages wait under Recently removed (the last 8), where hovering one shows a pin button to put it back. The first Arc page asks to let
-  Heimdall control Arc. A closed tab opens again from its URL. A saved tab shows the site's own icon, fetched once from the site when you save it (no third-party favicon service). The fetch only goes to the page's own host or to public addresses, so a page can't point it at your machine or local network.
-- **Design:** one calm look: a lit lamp at the left edge of a row shows its state (orange needs you,
-  green working). Nothing moves unless you hover. Right-click the island for Appearance (System, Light or
-  Dark; the strip at the notch stays black so it merges with the notch) or to quit.
-- **Health:** each source reads files that an app update can change. If a source breaks, a red line in
-  the panel (and a triangle on the pill) says which one, so the list never silently shrinks. One
-  unreadable thread is reported and skipped; the rest of its source still shows. A click that fails to
-  open its thread says why in the same place.
-
-## Where threads come from, and where a click takes you
-
-| Source | Read from | Click |
-|---|---|---|
-| Codex app | `~/.codex/state_*.sqlite` + the thread's rollout file (status, last reply) | `codex://threads/<id>` |
-| Codex CLI | same | focuses its Ghostty window or Warp tab, else `codex resume <id>` in a new session (see below) |
-| Claude desktop (Code tab) | `~/Library/Application Support/Claude/claude-code-sessions` | `claude://code/continue?session=<id>` |
-| Claude Code background jobs | `~/.claude/jobs/*/state.json` + live `~/.claude/sessions` | focuses the Ghostty window or Warp tab it is attached in, else `claude attach <id>` in a new session (see below) |
-| Claude Code CLI sessions | `~/.claude/sessions` | focuses its Ghostty window or Warp tab |
-
-Ghostty terminals are found by TTY through Ghostty's AppleScript dictionary (Ghostty 1.3+). Warp tabs are
-found by the `WARP_FOCUS_URL` (`warp://session/<id>`) Warp puts in every session's environment, read only
-from sessions that Warp itself started.
-
-A new session opens in the terminal you were just using: a Ghostty window, or a Warp tab (through a
-Warp Tab Config, `~/.warp/tab_configs/heimdall-<id>.toml`, since Warp's URLs can't run a command;
-configs older than a day are deleted). If you
-were in neither, it uses whichever is running, Ghostty first.
+Nothing moves unless you hover. Right-click the island for Appearance or Quit.
 
 ## Install
 
@@ -68,68 +32,53 @@ git clone https://github.com/ishwar00/heimdall.git ~/.local/share/heimdall
 open ~/Applications/Heimdall.app
 ```
 
-On the first jump into Ghostty, macOS asks whether Heimdall may control Ghostty. Allow it.
-To start it at login, add `~/Applications/Heimdall.app` in System Settings → General → Login Items.
-Right-click the island to quit.
+Allow the macOS prompts to control Ghostty and Arc the first time you use them. To start at login, add
+`~/Applications/Heimdall.app` in System Settings → General → Login Items.
 
-Optional, recommended: let Claude Code and Codex tell Heimdall when a turn starts, ends or waits for your
-approval. Without it, a Codex thread waiting for you to approve a command shows as working.
+Recommended: install the hooks so Claude Code and Codex report when a turn starts, ends or waits for
+approval. Without them, a Codex thread waiting on a command approval shows as working.
 
 ```sh
-~/.local/share/heimdall/hooks/install            # --remove takes it out again
+~/.local/share/heimdall/hooks/install    # --remove to undo
 ```
 
-It adds one hook command to `~/.claude/settings.json` and `~/.codex/hooks.json`, keeping your own hooks
-(the first run saves each file as `<file>.heimdall-backup`). Codex asks once whether to run new hooks
-("Review hooks"): allow them, and restart Codex. The hook writes only the event, session, turn and time to
-`~/Library/Application Support/Heimdall/events.jsonl`, never what you or the agent wrote.
+This adds one command to `~/.claude/settings.json` and `~/.codex/hooks.json`. Your own hooks stay, and
+each file is backed up first. Codex asks once to review new hooks: allow them and restart Codex. The hook
+records only the event, session, turn and time, never message text.
+
+## Where threads come from
+
+| Source | Read from | Click |
+|---|---|---|
+| Codex app | `~/.codex/state_*.sqlite` + rollout files | `codex://threads/<id>` |
+| Codex CLI | same | its Ghostty window or Warp tab, else `codex resume <id>` |
+| Claude desktop (Code tab) | `~/Library/Application Support/Claude/claude-code-sessions` | `claude://code/continue?session=<id>` |
+| Claude Code background jobs | `~/.claude/jobs/*/state.json` + `~/.claude/sessions` | its Ghostty window or Warp tab, else `claude attach <id>` |
+| Claude Code CLI | `~/.claude/sessions` | its Ghostty window or Warp tab |
 
 ## How it works
 
-`heimdall` (Python, standard library only) gathers every source into one JSON list, and `heimdall --jump`
-opens one row. The Swift app is only the UI: a borderless panel at the notch that runs `heimdall` every
-32 s (every 4 s while open, and right away when you open it). It never pops up on its own: you look when you want to.
+`bin/heimdall` (Python, standard library only) gathers every source into one JSON list, and
+`heimdall --jump` opens a row. The Swift app in `app/` is only the UI. It runs `heimdall` every 32 s
+(every 4 s while open). Run `heimdall` yourself to see the raw data. Each click is logged to
+`~/Library/Application Support/Heimdall/jumps.log`.
 
-A click on a thread that isn't open anywhere checks again before opening a new terminal, so one you
-opened since the last refresh is focused instead. Each click is logged, with what it did and why, to
-`~/Library/Application Support/Heimdall/jumps.log` (about 64 KB, then rotated).
-
-Run `heimdall` yourself to see the raw data.
-
-| Path | What's there |
-|---|---|
-| `bin/heimdall` | the command the app runs; starts `heimdall.cli` |
-| `heimdall/` | `codex.py`, `claude.py` (sources), `logs.py` (reading their logs), `events.py` (what the hooks reported), `prs.py`, `sections.py`, `pages.py`, `terminals.py` (finding and opening terminals), `state.py`, `core.py` |
-| `hooks/` | `heimdall-event`, the hook the agents run, and `install` |
-| `app/` | the SwiftUI panel: `Model`, `Store`, `Design`, `Icons`, `IslandView`, `Rows`, `Panel`, and `main.swift` to start it |
-| `tests/` | `fixtures.py` builds a synthetic home folder in the apps' file shapes, one record per past bug; `test_golden.py` runs `heimdall` over it against `golden.json` |
-
-Tests (no network, nothing read from your real home folder):
+Tests run on a synthetic home folder, with no network and nothing read from your real one:
 
 ```sh
 /usr/bin/python3 -m unittest discover tests
 ```
 
-After an intended change to the listing, regenerate the expected output with `UPDATE_GOLDEN=1` and review
-the diff of `tests/golden.json`. Fixtures are synthetic on purpose: real transcripts hold private work.
-
 ## Limits
 
-- PR status comes from GitHub through `gh` (`gh auth login` once), fetched at most every 5 minutes, so a
-  merge can take that long to show. A thread drops out of the list after 7 days without your messages,
-  even with an open PR.
 - Codex and Claude Code don't publish these file formats. An update can break a source; the health line
   tells you when.
-- A Codex thread shows "needs you" when it asked you a question (its `request_user_input` tool) that you
-  haven't answered yet, with the question as its detail line, or when a browser step has waited more
-  than a minute (a prompt to allow a download, let Computer Use control an app, or pick a file; Codex
-  reports these nowhere, and 99% of browser steps finish within 15 s). A wait for a command approval shows only
-  with the hooks installed, and only when you review that thread's approvals (with Codex's automatic
-  review it isn't waiting on you). Codex writes nothing while an approved command runs, so a long command
-  you approved keeps showing "needs you" until it finishes. Without the hooks, a turn with no writes for 10 minutes stops counting
-  as working.
-- Live sessions in terminals other than Ghostty and Warp show in the list but can't be jumped to.
-- Background jobs are focused where a `claude attach` runs. Nothing on disk records which job an agent-view
-  window (`claude` with no arguments) is showing, so a job open only there gets a new `claude attach` tab.
-- A saved Arc tab is looked for in every Arc window, but Arc can't be told to raise a window, so a tab in a
-  window behind the front one is selected there without coming forward.
+- PR status comes from `gh` (`gh auth login` once), refreshed at most every 5 minutes.
+- Jumping to a live session works only in Ghostty and Warp. Sessions in other terminals are listed but
+  can't be jumped to.
+- Arc can't be told to raise a window, so a saved tab in a background Arc window is selected there
+  without coming forward.
+
+## License
+
+[MIT](LICENSE)
