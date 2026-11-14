@@ -1,4 +1,3 @@
-
 # Heimdall
 
 A Dynamic Island for everything you switch between. Heimdall sits in the MacBook notch and lists your
