@@ -106,16 +106,22 @@ class OpenPage(unittest.TestCase):
 
     def arc(self, stdout, stderr=''):
         self.addCleanup(setattr, pages.subprocess, 'run', pages.subprocess.run)
-        pages.subprocess.run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0 if stdout else 1, stdout, stderr)
+        self.scripts = []
+
+        def run(cmd, **kw):
+            self.scripts.append(kw.get('input'))
+            return subprocess.CompletedProcess(cmd, 0 if stdout else 1, stdout, stderr)
+        pages.subprocess.run = run
         return pages.open_page(self.PAGE)
 
     def test_open_tab_is_selected(self):
         self.assertIsNone(self.arc('ok\n'))
         self.assertEqual(self.opened, [])
+        self.assertEqual(self.scripts, [pages.BROWSERS[self.PAGE['bundle']][2]])
 
     def test_closed_tab_is_opened_again(self):
         self.arc('missing\n')
-        self.assertEqual(self.opened, [['open', '-b', pages.ARC, self.PAGE['url']]])
+        self.assertEqual(self.opened, [['open', '-b', self.PAGE['bundle'], self.PAGE['url']]])
 
     def test_failed_lookup_opens_nothing(self):
         # Arc busy, or still restoring its windows after a launch: the tab may well be open
@@ -125,6 +131,11 @@ class OpenPage(unittest.TestCase):
         with open(core.JUMPS) as fh:
             self.assertIn('AppleEvent timed out', fh.read())
 
+
+
+class OpenDiaPage(OpenPage):
+    """The same for a saved Dia tab, with Dia's own script; its space is the profile's name."""
+    PAGE = {'tab': 'T1', 'space': 'Work', 'url': 'https://mail.example.com/', 'bundle': pages.DIA, 'name': 'Mail'}
 
 ICON = b'\x89PNG\r\n\x1a\n'
 

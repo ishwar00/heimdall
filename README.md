@@ -2,7 +2,7 @@
 # Heimdall
 
 A Dynamic Island for everything you switch between. Heimdall sits in the MacBook notch and lists your
-**Codex** and **Claude Code** threads, plus any Arc tab or app you save. Click one to jump straight to it.
+**Codex** and **Claude Code** threads, plus any Arc or Dia tab or app you save. Click one to jump straight to it.
 
 https://github.com/user-attachments/assets/56b189af-562f-48d1-b7c3-533b83e54a5e
 
@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/56b189af-562f-48d1-b7c3-533b83e54a5e
   - **Today, Yesterday, weekdays:** the rest, by when you last sent a message.
 - **Jump.** Click a thread to go to it: the Codex or Claude app, or the exact Ghostty window or Warp tab
   it's running in. If it isn't open anywhere, it resumes in a new terminal session.
-- **Pages.** Press **+** to save where you are: the exact Arc tab, or any other app. Saved pages
+- **Pages.** Press **+** to save where you are: the exact Arc or Dia tab, or any other app. Saved pages
   show as chips above your threads, one click away. Swipe with two fingers to switch to the Pages view
   to reorder or remove them.
 - **Health.** If an app update breaks a source, a red line says which one, so the list never shrinks
@@ -33,7 +33,7 @@ git clone https://github.com/ishwar00/heimdall.git ~/.local/share/heimdall
 open ~/Applications/Heimdall.app
 ```
 
-Allow the macOS prompts to control Ghostty and Arc the first time you use them. To start at login, add
+Allow the macOS prompts to control Ghostty, Arc or Dia the first time you use them. To start at login, add
 `~/Applications/Heimdall.app` in System Settings → General → Login Items.
 
 Recommended: install the hooks so Claude Code and Codex report when a turn starts, ends or waits for
@@ -78,7 +78,7 @@ Tests run on a synthetic home folder, with no network and nothing read from your
 - Jumping to a live session works only in Ghostty and Warp. Sessions in other terminals are listed but
   can't be jumped to.
 - Arc can't be told to raise a window, so a saved tab in a background Arc window is selected there
-  without coming forward.
+  without coming forward. Dia brings it forward.
 
 ## License
 

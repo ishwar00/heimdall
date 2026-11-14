@@ -1,4 +1,4 @@
-"""Saved pages: capture where you are (an Arc tab or an app), open it again, fetch a saved tab's icon."""
+"""Saved pages: capture where you are (an Arc or Dia tab, or an app), open it again, fetch a saved tab's icon."""
 import contextlib
 import http.client
 import ipaddress
@@ -65,6 +65,53 @@ ARC_SELECT = '''on run argv
     return "missing"
 end run'''
 
+DIA = 'company.thebrowser.dia'
+# Dia's scripting dictionary: /Applications/Dia.app/Contents/Resources/Dia.sdef (a profile is Dia's space)
+DIA_CAPTURE = '''set d to ASCII character 31
+tell application "Dia" to tell front window
+    return (id of active tab) & d & (title of active tab) & d & (URL of active tab) & d & (name of active profile) & d & (name of active profile)
+end tell'''
+DIA_SELECT = '''on run argv
+    set {tid, sid, u} to {item 1 of argv, item 2 of argv, item 3 of argv}
+    tell application "Dia"
+        activate
+        repeat 50 times -- a just-launched Dia restores its windows a moment later
+            if (count of windows) > 0 then exit repeat
+            delay 0.1
+        end repeat
+        -- a window lists only its active profile's tabs, so every profile is searched: by id, else by URL in
+        -- the profile it was saved from, else by URL anywhere (each profile keeps its own copy of a pinned
+        -- tab, same URL, its own id). Focusing the tab switches to its profile and raises its window;
+        -- focusing the profile first reorders the profiles, so an index taken before it names another.
+        repeat with pass from 1 to 3
+            repeat with w from 1 to count of windows
+                repeat with p from 1 to count of profiles of window w
+                    if pass is 1 then
+                        set n to count of (tabs of profile p of window w whose id is tid)
+                    else if u is "" or (pass is 2 and name of profile p of window w is not sid) then
+                        set n to 0
+                    else
+                        set n to count of (tabs of profile p of window w whose URL is u)
+                    end if
+                    if n > 0 then
+                        if pass is 1 then
+                            focus (first tab of profile p of window w whose id is tid)
+                        else
+                            focus (first tab of profile p of window w whose URL is u)
+                        end if
+                        return "ok"
+                    end if
+                end repeat
+            end repeat
+        end repeat
+    end tell
+    return "missing"
+end run'''
+
+# browsers whose tabs are saved: bundle id -> (name, capture script, select script). Both scripts use the
+# same fields: capture returns tab id, title, URL, space id, space title; select takes tab id, space id, URL
+BROWSERS = {ARC: ('Arc', ARC_CAPTURE, ARC_SELECT), DIA: ('Dia', DIA_CAPTURE, DIA_SELECT)}
+
 
 def front_app():
     """(bundle id, name) of the app you're in; the island never takes that from it. macOS can report a
@@ -81,21 +128,22 @@ def front_app():
 
 
 def capture_page():
-    """Where you are right now: the Arc tab you're on, or the app (one window per app in practice)."""
+    """Where you are right now: the Arc or Dia tab you're on, or the app (one window per app in practice)."""
     bundle, name = front_app()
     if not bundle:
         return {'error': 'no app in front'}
     page = {'bundle': bundle, 'app': name, 'name': name}
-    if bundle == ARC:
-        # the first time, macOS asks whether Heimdall may control Arc: leave time to answer
+    if bundle in BROWSERS:
+        browser, capture, _ = BROWSERS[bundle]
+        # the first time, macOS asks whether Heimdall may control the browser: leave time to answer
         try:
-            p = subprocess.run(['osascript', '-e', ARC_CAPTURE], capture_output=True, text=True, timeout=60)
+            p = subprocess.run(['osascript', '-e', capture], capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
-            return {'error': "Arc didn't answer; try again"}
+            return {'error': f"{browser} didn't answer; try again"}
         parts = p.stdout.rstrip('\n').split('\x1f')
         if p.returncode != 0 or len(parts) != 5:
-            # saving plain Arc instead would look like a saved tab and only ever open Arc
-            return {'error': 'couldn\'t read the Arc tab: ' + (p.stderr.strip() or 'no tab open')
+            # saving the plain browser instead would look like a saved tab and only ever open the browser
+            return {'error': f"couldn't read the {browser} tab: " + (p.stderr.strip() or 'no tab open')
                     + ('. Allow Heimdall in System Settings > Privacy & Security > Automation' if '-1743' in p.stderr else '')}
         tab, title, url, space, space_title = parts
         page.update(tab=tab, url=url, space=space, name=title or name, detail=f'{space_title} space')
@@ -104,15 +152,16 @@ def capture_page():
 
 def open_page(page):
     if page.get('tab'):
-        p = subprocess.run(['osascript', '-', page['tab'], page.get('space') or '', page.get('url') or ''], input=ARC_SELECT,
-                           capture_output=True, text=True, timeout=30)
+        bundle = page.get('bundle') if page.get('bundle') in BROWSERS else ARC
+        p = subprocess.run(['osascript', '-', page['tab'], page.get('space') or '', page.get('url') or ''],
+                           input=BROWSERS[bundle][2], capture_output=True, text=True, timeout=30)
         found = p.stdout.strip()
         log_jump('page', page.get('name'), found or p.stderr.strip())
         if found == 'ok':
             return None
-        # reopen only when no window has it: a failed lookup (Arc busy or still starting) isn't a closed tab
+        # reopen only when no window has it: a failed lookup (the browser busy or still starting) isn't a closed tab
         if found == 'missing' and page.get('url'):
-            return checked(['open', '-b', ARC, page['url']])
+            return checked(['open', '-b', bundle, page['url']])
         return p.stderr.strip() or 'tab not found'
     return checked(['open', '-b', page['bundle']])
 
